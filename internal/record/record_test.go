@@ -1,0 +1,89 @@
+package record
+
+import (
+	"bufio"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+// TestCastIsValidAsciinema proves the file opens with a v2 header and that each
+// output event is a well-formed [offset, "o", data] triple carrying the bytes
+// written, so a standard asciinema player can replay it.
+func TestCastIsValidAsciinema(t *testing.T) {
+	dir := t.TempDir()
+	r, err := New(dir, "sess123", 80, 24)
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	r.Write([]byte("login: "))
+	time.Sleep(5 * time.Millisecond)
+	r.Write([]byte("root\r\n"))
+	if err := r.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	f, err := os.Open(filepath.Join(dir, "sess123.cast"))
+	if err != nil {
+		t.Fatalf("open cast: %v", err)
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+
+	if !sc.Scan() {
+		t.Fatal("cast has no header line")
+	}
+	var hdr struct {
+		Version       int `json:"version"`
+		Width, Height int
+		Timestamp     int64
+	}
+	if err := json.Unmarshal(sc.Bytes(), &hdr); err != nil {
+		t.Fatalf("header is not JSON: %v", err)
+	}
+	if hdr.Version != 2 || hdr.Width != 80 || hdr.Height != 24 {
+		t.Fatalf("header = %+v, want version 2, 80x24", hdr)
+	}
+
+	var got strings.Builder
+	var lastOff float64 = -1
+	events := 0
+	for sc.Scan() {
+		var ev []json.RawMessage
+		if err := json.Unmarshal(sc.Bytes(), &ev); err != nil || len(ev) != 3 {
+			t.Fatalf("event line is not a 3-tuple: %q (%v)", sc.Text(), err)
+		}
+		var off float64
+		var kind, data string
+		json.Unmarshal(ev[0], &off)
+		json.Unmarshal(ev[1], &kind)
+		json.Unmarshal(ev[2], &data)
+		if kind != "o" {
+			t.Fatalf("event kind = %q, want o", kind)
+		}
+		if off < lastOff {
+			t.Fatalf("event offsets are not monotonic: %v then %v", lastOff, off)
+		}
+		lastOff = off
+		got.WriteString(data)
+		events++
+	}
+	if events != 2 {
+		t.Fatalf("recorded %d events, want 2", events)
+	}
+	if got.String() != "login: root\r\n" {
+		t.Fatalf("replayed output = %q, want the two writes concatenated", got.String())
+	}
+}
+
+// TestNilRecorderIsSafe proves the no-op behaviour callers rely on.
+func TestNilRecorderIsSafe(t *testing.T) {
+	var r *Recorder
+	r.Write([]byte("x")) // must not panic
+	if err := r.Close(); err != nil {
+		t.Fatalf("nil Close: %v", err)
+	}
+}
