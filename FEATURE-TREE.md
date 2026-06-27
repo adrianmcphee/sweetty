@@ -35,6 +35,27 @@ file. Design rationale lives in the companion docs ([VISION.md](./VISION.md),
 - **The embedded tree renders the instance identity**: no residual placeholders, two instances differ, ownership matches `/etc/passwd` and `/etc/group`, modes consistent. _internal/fakehost: TestLoadRendersInstanceIdentity, TestNoResidualPlaceholders, TestTwoInstancesDiffer, TestOwnershipMatchesPasswdAndGroup, TestCoherentOwnershipAndModes_
 - **`/proc` identity is synthetic and per-arch**, not the host's. _internal/fakehost: TestProcIdentityRendersPerArch_
 
+## Shell coherence
+
+- **ls and cat agree; root reads shadow; a missing file errors**. _internal/proto/telnet: TestFilesystemCoherence_
+- **cd updates cwd and the prompt**. _internal/proto/telnet: TestStatefulCdAndPwd_
+- **The parser handles chaining, quoting, env-assignment prefixes, pipes, redirects, and variable expansion**. _internal/shell: TestParseChainingQuotingEnv; internal/proto/telnet: TestParsingShapes_
+- **head and tail honour line and byte counts**. _internal/shell: TestHeadTailHonorLineCount_
+- **ls reports real hard-link counts, dot entries, and the total line**. _internal/shell: TestLsLinkCounts, TestLsDotEntriesAndTotal_
+- **Generated output derives from session state**: disk story, process start versus uptime, systemctl main PID versus ps, listeners versus persona services. _internal/shell: TestDiskStoryIsCoherent, TestProcessStartCoherentWithUptime, TestSystemctlMainPidMatchesPs, TestListenersMatchPersonaServices_
+- **Arch is consistent across /proc, uname, lscpu, and the disk**, including the ARM board. _internal/shell: TestArchIsOneStoryAcrossSources, TestEmbeddedDiskStoryIsCoherent; internal/proto/telnet: TestEmbeddedDeviceSessionIsCoherentlyARM_
+- **Disk geometry varies between instances and is stable within one**. _internal/shell: TestDiskGeometryVariesPerInstance, TestDiskGeometryIsStableWithinInstance_
+
+## Faked operations (VISION §2)
+
+Faked operations report success and leave overlay state, without fetching from the
+network, executing attacker input, or writing to the host disk.
+
+- **wget and curl -O complete and write an inert payload to the overlay; running the dropped file is logged as an exec, not reported missing**. _internal/proto/telnet: TestDownloadLandsAndRuns_
+- **apt and pip report a successful install and leave a `/usr/bin` stub**, so which, ls, and dpkg remain consistent. _internal/proto/telnet: TestInstallsComplete_
+- **`crontab -e` round-trips through `crontab -l`; an authorized_keys append survives a re-read**. _internal/proto/telnet: TestPersistenceSticks_
+- **scp and rsync report a completed transfer without opening a connection**, capturing the destination and credentials. _internal/proto/telnet: TestExfilCompletes_
+
 ## Bait and honeytokens (VISION §8)
 
 - **ssh to the backup host named in the breadcrumb trail reaches a second coherent host; the pivot credential is captured**. _internal/proto/telnet: TestPivotToJustinTimberlakeHost_
