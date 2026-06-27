@@ -1,0 +1,29 @@
+{
+  "defaults": {
+    "uid": 0, "gid": 0, "uname": "root", "gname": "root",
+    "dirmode": "0755", "filemode": "0644", "mtime": "-22d"
+  },
+  "meta": {
+    "/srv/backups": {"uname": "backup", "gname": "backup", "mtime": "-4d"},
+    "/root": {"mode": "0700"},
+    "/root/.bash_history": {"mode": "0600", "mtime": "-2d"}
+  },
+  "dirs": [
+    {"path": "/srv"}, {"path": "/srv/backups", "uname": "backup", "gname": "backup"},
+    {"path": "/mnt"}, {"path": "/mnt/storage"}, {"path": "/home"}, {"path": "/home/admin"},
+    {"path": "/var"}, {"path": "/var/log"}, {"path": "/etc"}, {"path": "/root", "mode": "0700"},
+    {"path": "/usr"}, {"path": "/usr/bin"}, {"path": "/tmp", "mode": "1777"}, {"path": "/proc"},
+    {"path": "/sys"}, {"path": "/dev"}, {"path": "/run"}
+  ],
+  "links": [
+    {"path": "/bin", "target": "/usr/bin"},
+    {"path": "/sbin", "target": "/usr/bin"}
+  ],
+  "binaries": [
+    {"dir": "/usr/bin", "size": 35112, "names": [
+      "bash", "sh", "ls", "cat", "cp", "mv", "rm", "find", "file", "stat", "head", "tail",
+      "scp", "ssh", "sftp", "wget", "curl", "tar", "gzip", "df", "du", "mount", "ps", "id",
+      "whoami", "hostname", "uname", "grep", "echo", "mysql", "rsync"
+    ]}
+  ]
+}
