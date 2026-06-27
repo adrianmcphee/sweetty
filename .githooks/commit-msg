@@ -1,0 +1,31 @@
+#!/bin/sh
+# Block agent/AI attribution in commit messages (AGENTS.md rule 1: no
+# Co-Authored-By, no "Generated with", no robot emoji, nothing).
+#
+# This is a commit-msg hook, not pre-commit, because the message does not exist
+# yet at pre-commit time. The hooks directory is tracked; install it once per
+# clone with `make hooks` (sets core.hooksPath to .githooks).
+
+set -eu
+
+msg_file="$1"
+
+# Scan only the authored text: stop at git's scissors line (so a `commit -v` diff
+# is never scanned) and drop comment lines.
+authored=$(sed '/^#.*>8/q' "$msg_file" | grep -vE '^#' || true)
+
+# Case-insensitive markers. Co-Authored-By is refused outright (this repo records
+# human authorship); the rest catch the usual agent footers, tool names, and the
+# robot emoji.
+forbidden='co-authored-by|🤖|generated with|claude|anthropic|copilot|co-pilot|chatgpt|openai|gpt-[0-9]|gemini|ai-generated|written by ai|assisted by ai'
+
+hits=$(printf '%s\n' "$authored" | grep -inE "$forbidden" || true)
+
+if [ -n "$hits" ]; then
+	echo "commit-msg: refusing commit: agent/AI attribution is not allowed (AGENTS.md rule 1)." >&2
+	echo "Offending line(s):" >&2
+	printf '%s\n' "$hits" | sed 's/^/  /' >&2
+	echo "Remove the attribution (Co-Authored-By, 'Generated with', a tool name, the robot emoji) and recommit." >&2
+	exit 1
+fi
+exit 0
