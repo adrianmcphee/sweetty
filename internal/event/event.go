@@ -165,3 +165,17 @@ func (l *Logger) PortScan(remoteAddr string, dstPort int, proto string) {
 func (l *Logger) System(format string, args ...any) {
 	l.Log(Entry{Event: "SYSTEM", Message: fmt.Sprintf(format, args...)})
 }
+
+// FloodBlocked logs that the optional HAProxy edge shed a volumetric flood from a
+// source before it reached the honeypot: the source's new-connection rate crossed
+// the gentle stick-table limit. srcIP is the real attacker address (HAProxy tracks
+// it at the connection level), connRate the new connections it opened in the
+// stick-table window. It reads as attacker activity in the feed, since a flood is.
+func (l *Logger) FloodBlocked(srcIP string, connRate int) {
+	l.Log(Entry{
+		Event:   "FLOOD_BLOCKED",
+		IP:      srcIP,
+		SrcIP:   srcIP,
+		Message: fmt.Sprintf("edge rate-limited a flood (conn_rate %d/10s)", connRate),
+	})
+}

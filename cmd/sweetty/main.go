@@ -12,10 +12,12 @@ import (
 	"os/signal"
 	"runtime"
 	"syscall"
+	"time"
 
 	"sweetty/internal/config"
 	"sweetty/internal/event"
 	"sweetty/internal/fakehost"
+	"sweetty/internal/haproxy"
 	"sweetty/internal/persona"
 	"sweetty/internal/portal"
 	"sweetty/internal/proto/ftp"
@@ -39,6 +41,11 @@ var (
 func main() {
 	configPath := flag.String("config", "config.json", "path to config file")
 	profileFlag := flag.String("profile", "", "service profile for init (web|edge|infra|legacy|ftp|full|random)")
+	hapSocket := flag.String("haproxy-socket", "/run/haproxy/admin.sock", "HAProxy admin socket (hapwatch)")
+	hapTable := flag.String("haproxy-table", "st_src", "HAProxy stick-table name (hapwatch)")
+	floodThreshold := flag.Int("flood-threshold", 200, "new-connection rate that counts as a flood (hapwatch)")
+	floodInterval := flag.Duration("flood-interval", 5*time.Second, "stick-table poll interval (hapwatch)")
+	floodCooldown := flag.Duration("flood-cooldown", time.Minute, "per-source flood report cooldown (hapwatch)")
 	flag.Parse()
 
 	switch flag.Arg(0) {
@@ -79,12 +86,65 @@ func main() {
 		fmt.Printf("  commit: %s\n", gitCommit)
 		fmt.Printf("  built:  %s\n", buildDate)
 		fmt.Printf("  go:     %s %s/%s\n", runtime.Version(), runtime.GOOS, runtime.GOARCH)
+	case "hapwatch":
+		hapwatch(*configPath, *hapSocket, *hapTable, *floodThreshold, *floodInterval, *floodCooldown)
 	case "":
 		run(*configPath)
 	default:
 		fmt.Fprintln(os.Stderr, "unknown subcommand:", flag.Arg(0))
-		fmt.Fprintln(os.Stderr, "usage: sweetty [-config path] [init|version]")
+		fmt.Fprintln(os.Stderr, "usage: sweetty [-config path] [init|version|hapwatch]")
 		os.Exit(2)
+	}
+}
+
+// hapwatch polls the optional HAProxy edge's stick-table and logs a FLOOD_BLOCKED
+// event whenever a source's new-connection rate crosses the flood threshold, so
+// the edge's gentle rate-limiting surfaces in the same event stream the dashboard
+// tails. It is a thin management-plane helper: it reads only HAProxy's local admin
+// socket and writes only the event log, and systemd keeps it running alongside
+// HAProxy. With no HAProxy edge (the direct topology) the socket is simply absent
+// and it idles, retrying.
+func hapwatch(configPath, socket, table string, threshold int, interval, cooldown time.Duration) {
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		fatal("config", err)
+	}
+	lg, err := event.New(cfg.LogFile)
+	if err != nil {
+		fatal("log", err)
+	}
+	defer lg.Close()
+
+	w := haproxy.NewWatcher(threshold, cooldown)
+	lg.System("hapwatch: watching HAProxy table %q for floods over %d conn/10s", table, threshold)
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	failing := false
+	for {
+		srcs, qerr := haproxy.QueryStickTable(socket, table, 3*time.Second)
+		if qerr != nil {
+			if !failing {
+				failing = true
+				lg.System("hapwatch: HAProxy stick-table unreachable (%v); retrying", qerr)
+			}
+		} else {
+			if failing {
+				failing = false
+				lg.System("hapwatch: HAProxy stick-table reachable again")
+			}
+			for _, s := range w.Flooding(srcs, time.Now()) {
+				lg.FloodBlocked(s.IP, s.ConnRate)
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
 	}
 }
 

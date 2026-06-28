@@ -134,6 +134,7 @@ Every event is one JSON object on its own line in `log_file`. A compact human su
 |-------|---------|
 | `SESSION_START` / `SESSION_END` | Connection opened / closed, with duration and command count |
 | `PORT_SCAN` | Connected but sent no data within the grace window |
+| `FLOOD_BLOCKED` | The optional HAProxy edge rate-limited a source's connection flood (logged by the `hapwatch` helper from HAProxy's stick-table) |
 | `CREDENTIAL` | Username / password captured |
 | `COMMAND` | A shell command was run |
 | `DOWNLOAD_ATTEMPT` | `wget`/`curl`/interpreter pull of a remote payload |
