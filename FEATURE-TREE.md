@@ -126,6 +126,18 @@ network, executing attacker input, or writing to the host disk.
 
 - **Country lookup reads an optional database** (range, integer, and CIDR row forms), claims no country without one, skips malformed rows, survives a recoverable CSV error without truncation, and classifies address scope. _internal/geo: TestCountryLookupRangeForm, TestCountryLookupIntegerAndCIDRForms, TestNoCountryWithoutDatabase, TestMalformedRowsAreSkipped, TestRecoverableCsvErrorDoesNotTruncate, TestScopeClassification_
 
+## Session recording and replay
+
+- **Each session can be recorded as a valid asciinema v2 cast** when `record_dir` is set; a nil recorder is a no-op. _internal/record: TestCastIsValidAsciinema, TestNilRecorderIsSafe; internal/server: TestSessionRecordingWritesCast_
+- **A recorded cast is served by id; a bad id is rejected**. _internal/portal: TestCastServesRecording, TestCastRejectsBadID_
+
+## Portal (VISION §6)
+
+- **The portal binds loopback and serves the dashboard over plain HTTP with no application auth**: the root and every data route answer directly with no cookie and no login redirect, the served HTML reaches nothing off-host, and every script-referenced element id resolves. _internal/portal: TestNoAuthServesDashboardDirectly, TestServedHTMLReachesNothingOffHost, TestDashboardScriptElementIDsResolve_
+- **The SSE feed uses byte-offset ids, resumes from Last-Event-ID, skips history on a fresh connect, ignores an unusable id, and streams appended lines**. _internal/portal: TestEventsFeedIDIsByteOffset, TestEventsFeedResumesFromLastEventID, TestEventsFeedFreshConnectSkipsExisting, TestEventsFeedIgnoresUnusableLastEventID, TestEventsFeedStreamsAppendedLines_
+- **Analytics aggregate the overview (with a busy-sensor cap), honeytokens, the filtered log query, and the recordings list**. _internal/portal: TestOverviewAggregates, TestOverviewCapsBusySensor, TestHoneytokensAggregates, TestLogQueryFilters, TestRecordingsListsCastIDsOnly_
+- **The admin console proxy serves a local upstream over the same SSH tunnel, strips the prefix, hides the target, refuses a non-local target, and redirects bare to slash**. _internal/portal: TestAdminConsoleProxiesToLocalUpstream, TestAdminConsoleStripPrefix, TestAdminConsoleListHidesTarget, TestAdminConsoleRefusesNonLocalTarget, TestAdminConsoleBareRedirectsToSlash_
+
 ## Configuration and secrets
 
 - **Config is generated from the persona with a per-instance portal port**. _internal/config: TestGenerateFromPersona, TestPortalPortVaries_
