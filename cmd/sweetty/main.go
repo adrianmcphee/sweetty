@@ -157,6 +157,15 @@ func buildProtocol(lc config.Listener, p *persona.Persona, base *vfs.FS) server.
 }
 
 func run(configPath string) {
+	// Drop the syscalls the honeypot never needs but a memory-corruption RCE would
+	// (exec, ptrace, module load), as the first thing the process does. On a kernel
+	// that cannot install the filter, log and continue rather than leave the sensor
+	// deaf: under systemd the SystemCallFilter sandbox still applies, and a honeypot
+	// that refuses to start protects nothing.
+	if err := lockdownSyscalls(); err != nil {
+		fmt.Fprintf(os.Stderr, "seccomp lockdown unavailable, continuing without it: %v\n", err)
+	}
+
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		fatal("config", fmt.Errorf("%w (run `sweetty init` first)", err))
