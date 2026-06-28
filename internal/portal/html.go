@@ -97,6 +97,7 @@ nav{flex:1;overflow-y:auto;padding:4px 10px 10px}
 .badge .bd{width:7px;height:7px;border-radius:2px;flex:none}
 .badge .bn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .row .ip{width:142px;flex:none;color:var(--mut);font-family:var(--mono);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .svc{width:104px;flex:none;color:var(--acc);font-family:var(--mono);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .row .msg{flex:1;color:#d4d4d8;font-family:var(--mono);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .empty{padding:40px 16px;text-align:center;color:var(--mut2);font-size:13px}
 
@@ -299,6 +300,7 @@ if(first>=0&&first===last)return addr.slice(0,last);
 return addr;
 }
 function srcOf(e){return e.src_ip||hostOnly(e.ip)||'';}
+function svcOf(e){if(!e.protocol&&!e.port)return '';return (e.protocol||'?')+(e.port?':'+e.port:'');}
 function hms(t){return t?String(t).slice(11,19):'';}
 function summary(e){
 if(e.message)return e.message;
@@ -329,6 +331,7 @@ var div=el('div','row');
 div.appendChild(el('span','t',hms(e.time)));
 div.appendChild(badgeEl(e.event));
 div.appendChild(el('span','ip',srcOf(e)));
+div.appendChild(el('span','svc',svcOf(e)));
 div.appendChild(el('span','msg',summary(e)));
 var ip=srcOf(e);
 div.addEventListener('click',function(){openIP(ip);});
