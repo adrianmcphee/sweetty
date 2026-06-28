@@ -1,0 +1,129 @@
+name: release
+
+# Release is manual: trigger it from the Actions tab (workflow_dispatch). With no
+# version input it bumps the patch from the last tag; pass a version to cut a
+# specific major/minor. Nothing is built or published on an ordinary push to main.
+#
+# Supply-chain posture:
+#   - Every third-party action is pinned to a full commit SHA (the floating @vN
+#     tags are mutable and a tag-mutation or maintainer-account compromise of any
+#     action would otherwise run attacker code in this contents:write job). The
+#     trailing comment records the human-readable version; Dependabot bumps them.
+#   - The release runs in the protected `release` environment, so branch/environment
+#     protection rules (required reviewers) can gate publishing.
+#   - Artifacts carry a signed build-provenance attestation (sigstore keyless), so a
+#     consumer can prove a binary was built by this workflow from this repo with
+#     `gh attestation verify <file> --repo <owner>/sweetty` before installing it.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g. v0.2.0); blank bumps the patch from the last tag'
+        required: false
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write       # mint the OIDC token the provenance attestation is signed with
+  attestations: write   # write the signed attestation back to the repo
+
+# Serialize releases so two manual runs never race on version computation.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    # Gate publishing behind a protected environment. Add required reviewers to the
+    # `release` environment in repo settings to require manual approval per release.
+    environment: release
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify
+        run: make check
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            v="${{ github.event.inputs.version }}"
+          else
+            git fetch --tags --force >/dev/null 2>&1 || true
+            latest=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -1)
+            latest=${latest:-v0.0.0}
+            ver=${latest#v}
+            major=${ver%%.*}; rest=${ver#*.}; minor=${rest%%.*}; patch=${rest##*.}
+            v="v${major}.${minor}.$((patch + 1))"
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Releasing $v"
+
+      - name: Build release archives
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: bash scripts/build-release.sh
+
+      - name: Verify checksums
+        run: cd dist && { sha256sum -c checksums.txt || shasum -a 256 -c checksums.txt; }
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@ef244123eb79f2f7a7e75d99086184180e6d0018 # v1
+        with:
+          subject-path: 'dist/*.tar.gz'
+
+      - name: Install ORAS
+        uses: oras-project/setup-oras@22ce207df3b08e061f537244349aac6ae1d214f6 # v1
+        with:
+          version: 1.2.3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish OCI artifact to ghcr.io
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          # ghcr.io requires a lowercase owner; github.repository_owner may not be.
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          ref="ghcr.io/${owner}/sweetty:${VERSION}"
+          cd dist
+          # Attach every platform archive plus the checksum file as layers of one
+          # release artifact, so a single tag pulls the whole cross-platform set.
+          files=()
+          for f in sweetty_*.tar.gz; do files+=("${f}:application/gzip"); done
+          files+=("checksums.txt:text/plain")
+          oras push "$ref" \
+            --artifact-type application/vnd.sweetty.release.v1+tar \
+            --annotation "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --annotation "org.opencontainers.image.title=sweetty release binaries (OCI artifact)" \
+            --annotation "org.opencontainers.image.description=OCI artifact, not a Docker image. Pull the cross-platform SweeTTY binaries with ORAS: oras pull ghcr.io/${owner}/sweetty:latest" \
+            --annotation "org.opencontainers.image.version=${VERSION}" \
+            "${files[@]}"
+          oras tag "$ref" latest
+          echo "Pushed OCI artifact: ${ref}"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ steps.ver.outputs.version }}
+          files: dist/*
+          generate_release_notes: true
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: sweetty-${{ steps.ver.outputs.version }}
+          path: dist/*
