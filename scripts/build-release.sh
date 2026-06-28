@@ -28,14 +28,17 @@ for t in "${targets[@]}"; do
   goarch="${t#*/}"
   stage="$(mktemp -d)"
   echo "building ${goos}/${goarch}"
-  # Build the linux targets as PIE so the whole image base is ASLR-randomized at
-  # load; a non-PIE ET_EXEC sits at a fixed address and hands gadget addresses to an
-  # exploit. CGO stays disabled (static, internal-linked PIE). darwin is already
-  # PIE, so gate the flag to linux.
-  buildmode=""
-  [ "$goos" = "linux" ] && buildmode="-buildmode=pie"
+  # Build a fully static binary (CGO disabled, no -buildmode=pie). The deployment
+  # runs the honeypot under a systemd unit with NoExecPaths=/ scoped to the single
+  # slot binary, as the strongest layer of post-RCE containment. A Go PIE keeps a
+  # PT_INTERP (the dynamic loader), which that unit cannot exec, so a PIE binary
+  # dies at startup with 203/EXEC. A static ET_EXEC has no interpreter, satisfies
+  # NoExecPaths, and matches the "statically linked, self-contained" promise in the
+  # README and VISION. Image-base ASLR is traded for that self-containment; the
+  # kernel still randomizes stack/heap/mmap, and the unit adds W^X and a
+  # seccomp execve-deny on top.
   CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
-    go build $buildmode -trimpath -ldflags "$LDFLAGS" -o "$stage/sweetty" ./cmd/sweetty
+    go build -trimpath -ldflags "$LDFLAGS" -o "$stage/sweetty" ./cmd/sweetty
   for f in README.md VISION.md LICENSE; do
     [ -f "$f" ] && cp "$f" "$stage/"
   done
@@ -43,7 +46,9 @@ for t in "${targets[@]}"; do
   rm -rf "$stage"
 done
 
-( cd "$OUT" && { sha256sum ./*.tar.gz 2>/dev/null || shasum -a 256 ./*.tar.gz; } > checksums.txt )
+# Bare filenames (no ./ prefix), so a consumer can `grep "  <asset>$"` and
+# `sha256sum -c` the entry directly. A ./ prefix breaks that exact-suffix match.
+( cd "$OUT" && { sha256sum *.tar.gz 2>/dev/null || shasum -a 256 *.tar.gz; } > checksums.txt )
 
 echo "artifacts in ${OUT}:"
 ls -1 "$OUT"
