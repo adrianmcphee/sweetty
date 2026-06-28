@@ -46,6 +46,20 @@ file. Design rationale lives in the companion docs ([VISION.md](./VISION.md),
 - **Arch is consistent across /proc, uname, lscpu, and the disk**, including the ARM board. _internal/shell: TestArchIsOneStoryAcrossSources, TestEmbeddedDiskStoryIsCoherent; internal/proto/telnet: TestEmbeddedDeviceSessionIsCoherentlyARM_
 - **Disk geometry varies between instances and is stable within one**. _internal/shell: TestDiskGeometryVariesPerInstance, TestDiskGeometryIsStableWithinInstance_
 
+## Cross-service coherence (VISION §1)
+
+- **Banners, uname, /etc/\*, and the prompt agree across telnet, ssh, http, and ftp**. _internal/crosscheck: TestEveryServiceTellsOnePersonaStory_
+- **Identity is consistent across sources within a live session**. _internal/proto/telnet: TestCrossSourceIdentityCoherence, TestMetadataViewsAgree_
+
+## Safety boundary (VISION §2)
+
+- **No attacker-reachable package imports `os/exec`, a network dialer, or the host filesystem**; the build fails if a new proto or handler package is unguarded. _internal/safety: TestHandlersHaveNoCapabilityImports, TestEveryProtoPackageIsGuarded, TestEveryAttackerReachablePackageIsGuarded_
+- **No download or exec vector opens an outbound connection**: each is pointed at a listener that flags any connect; intent is logged, nothing connects or runs. _internal/proto/telnet: TestNoOutboundConnectionOrExec, TestDownloadFetchesNothing_
+- **`wget -O- ... | sh` is logged as an exec attempt and not executed**. _internal/proto/telnet: TestPipeToShellIsExecAttempt_
+- **Shell writes touch only the in-memory overlay, which is discarded per session**. _internal/proto/telnet: TestShellWritesNoHostByte, TestOverlayEvaporatesAcrossSessions; internal/vfs: TestCopyOnWriteOverlay_
+- **A full session (login, recon, mutate, faked download) stays inside the boundary**. _internal/proto/telnet: TestVerticalSliceIsCoherentEndToEnd_
+- **Post-RCE containment**: Linux seccomp is installed at startup and the release binary is PIE. Built in `cmd/sweetty/seccomp_linux*.go` and `scripts/build-release.sh`; no runtime test (the filter forbids syscalls the process never issues after setup).
+
 ## Faked operations (VISION §2)
 
 Faked operations report success and leave overlay state, without fetching from the
