@@ -122,6 +122,10 @@ network, executing attacker input, or writing to the host disk.
 - **A stable session id correlates a whole connection**. _internal/proto/telnet: TestSessionIdCorrelatesWholeConnection_
 - **Control bytes are neutralised for console and portal display**. _internal/util: TestSanitizeDisplay_
 
+## Geo enrichment
+
+- **Country lookup reads an optional database** (range, integer, and CIDR row forms), claims no country without one, skips malformed rows, survives a recoverable CSV error without truncation, and classifies address scope. _internal/geo: TestCountryLookupRangeForm, TestCountryLookupIntegerAndCIDRForms, TestNoCountryWithoutDatabase, TestMalformedRowsAreSkipped, TestRecoverableCsvErrorDoesNotTruncate, TestScopeClassification_
+
 ## Configuration and secrets
 
 - **Config is generated from the persona with a per-instance portal port**. _internal/config: TestGenerateFromPersona, TestPortalPortVaries_
