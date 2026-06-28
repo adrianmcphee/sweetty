@@ -88,6 +88,13 @@ network, executing attacker input, or writing to the host disk.
 - **Wrong password and unknown user are rejected**. _internal/proto/ssh: TestWrongPasswordRejected, TestUnknownUserRejected_
 - **Cooked-TTY line discipline edits and terminates lines, swallows CRLF, and ends on Ctrl-D**. _internal/proto/ssh: TestCookedTTYEditsAndTerminatesLines, TestCookedTTYSwallowsCRLF, TestCookedTTYCtrlDEndsSession_
 
+## HTTP, HTTPS, FTP
+
+- **HTTP responses match the configured stack** (nginx, apache, tomcat, wordpress): header content and order, Date/Server placement, method handling (405 without Allow, per-daemon unknown method), WordPress REST link and login signature, HEAD headers-only. _internal/proto/http: TestNginxServerHeaderIsBareAndBeforeDate, TestApacheEmitsDateBeforeServer, TestTomcatSendsNoServerHeader, TestPerStackHeaderOrder, TestNginxNonGetMethodIs405WithoutAllow, TestUnknownMethodIsPerDaemon, TestWordPressFrontPageHasRestApiLink, TestWordPressLoginSignatureHeaders, TestHeadReturnsHeadersOnly, TestNginxServesExactDefaultIndex, TestTomcatEmptyReasonAndDefault404_
+- **POST bodies are hashed (SHA); routes resolve per stack**. _internal/proto/http: TestPostIsLoggedWithSHA, TestPostShaMatchesBody, TestRootResponseByStyle, TestWordPressRoutes, TestTomcatRoutes, TestNginxRoutes, TestParseRequestLine_
+- **HTTPS captures the TLS ClientHello and writes no application bytes**. _internal/proto/https: TestHTTPSNeverWritesBytesAndCapturesHello, TestTLSHelloCaptured_
+- **FTP matches the configured daemon and captures credentials** (vsftpd, proftpd, pureftpd; banner; QUIT). _internal/proto/ftp: TestFTPVsftpdBehaviour, TestFTPPureFTPdBehaviour, TestFTPProFTPdBehaviour, TestFTPBannerAndCredentialCapture, TestFTPQuit_
+
 ## Source attribution and scan detection
 
 - **A bare connect that sends nothing is logged as a port scan and dropped**. _internal/server: TestBareConnectIsPortScan_
