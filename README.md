@@ -176,7 +176,7 @@ A link per console appears in the topbar, opening it at `/dashboard/console/<nam
 
 ## Releases
 
-Pushing a `vX.Y.Z` tag runs the release workflow, which builds version-stamped, statically linked binaries for `linux/amd64`, `linux/arm64`, `darwin/amd64`, and `darwin/arm64`, writes a `checksums.txt`, and attaches them to a GitHub Release. Build the same archives locally with `make release-local`. The instance template pulls a pinned tag's `linux` archive, verifies it against `checksums.txt`, and rolls it into place.
+The release is **manual**: trigger the workflow from the Actions tab (`workflow_dispatch`) or with `gh workflow run release.yml`. With no version input it bumps the patch from the last tag; pass a `version` (for example `-f version=v0.2.0`) to cut a specific major/minor. The run builds version-stamped, statically linked binaries for `linux/amd64`, `linux/arm64`, `darwin/amd64`, and `darwin/arm64`, writes a `checksums.txt`, creates the `vX.Y.Z` tag and GitHub Release, and signs a build-provenance attestation for each archive (verify one with `gh attestation verify <file> --repo adrianmcphee/sweetty`). Nothing is built or published on an ordinary push to `main`. Build the same archives locally with `make release-local`. The instance template pulls a pinned tag's `linux` archive, verifies it against `checksums.txt`, and rolls it into place.
 
 ### Getting the binaries
 
@@ -184,8 +184,8 @@ The same archives are also published as a single OCI artifact to the GitHub Cont
 
 ```bash
 # Pull the cross-platform archives (all four targets + checksums.txt) for a tag
-oras pull ghcr.io/adrianmcphee/sweetty:v0.1.1
-tar -xzf sweetty_0.1.1_linux_amd64.tar.gz
+oras pull ghcr.io/adrianmcphee/sweetty:v0.1.0
+tar -xzf sweetty_0.1.0_linux_amd64.tar.gz
 ```
 
 Or just download the `.tar.gz` for your platform straight from the [GitHub Release](https://github.com/adrianmcphee/sweetty/releases). Either way, verify it against `checksums.txt`. The instance template automates this: it pulls a pinned tag's `linux` archive, checks the SHA256, and rolls it into place.
