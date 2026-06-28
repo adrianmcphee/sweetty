@@ -97,6 +97,7 @@ A few optional fields control the management plane and the network edge:
 - `portal_bind` (default `127.0.0.1`): the host the portal binds. Loopback by default, so it is reachable only by tunnelling the management SSH to it. The portal serves plain HTTP with no application auth, so set `0.0.0.0` to expose it directly only behind a trusted boundary (rarely wanted).
 - `proxy_protocol` (default `false`): parse an HAProxy PROXY header at the front of each connection and log the attacker's real source IP. Enable it only when the honeypot ports sit behind an HAProxy edge configured with `send-proxy`; the two are a matched pair (see the instance template).
 - `record_dir` (default empty, disabled): a directory to write per-session [asciinema](https://asciinema.org) cast recordings to, one `<session-id>.cast` per connection, capturing exactly the bytes the attacker saw. The portal can replay them inline.
+- `persona_file` (default empty: `persona.json` beside the config): where the generated per-instance identity is persisted. The honeypot writes it on first run (atomically), so when the config directory is operator-owned and read-only (the hardened deployment), point this at a directory the honeypot user owns and can write.
 
 ### What each service presents
 

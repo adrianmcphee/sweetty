@@ -5,6 +5,7 @@ package config
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 
 	"sweetty/internal/persona"
 )
@@ -25,8 +26,24 @@ type Config struct {
 	PortalBind        string         `json:"portal_bind,omitempty"`         // host the portal binds; default 127.0.0.1, reached via an SSH tunnel. Set 0.0.0.0 to expose it directly (no application auth, so only behind a trusted boundary)
 	GeoIPFile         string         `json:"geoip_file,omitempty"`          // optional operator IP-to-country CSV, read only by the portal
 	RecordDir         string         `json:"record_dir,omitempty"`          // optional directory for per-session asciinema cast recordings; empty disables recording
+	PersonaFile       string         `json:"persona_file,omitempty"`        // where the generated per-instance identity is persisted; empty means persona.json beside the config. Point it at a honeypot-writable path when the config dir is read-only (the hardened deployment), since the persona is written by the honeypot, not the operator
 	AdminConsoles     []AdminConsole `json:"admin_consoles,omitempty"`      // operator consoles reverse-proxied through the portal, reached over the same SSH tunnel
 	Listeners         []Listener     `json:"listeners"`
+}
+
+// PersonaPath resolves where the instance persona is persisted. By default it is
+// persona.json beside the config file; a non-empty PersonaFile overrides that, so
+// a hardened deployment can keep the operator-owned config read-only while the
+// honeypot writes its generated identity (atomically, via a temp file) to a
+// directory it owns. A relative PersonaFile is resolved against the config dir.
+func (c Config) PersonaPath(configPath string) string {
+	if c.PersonaFile == "" {
+		return filepath.Join(filepath.Dir(configPath), "persona.json")
+	}
+	if filepath.IsAbs(c.PersonaFile) {
+		return c.PersonaFile
+	}
+	return filepath.Join(filepath.Dir(configPath), c.PersonaFile)
 }
 
 // AdminConsole is an operator-facing web console (such as the HAProxy stats page)

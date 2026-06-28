@@ -10,7 +10,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"runtime"
 	"syscall"
 
@@ -49,7 +48,7 @@ func main() {
 		if err := config.Write(cfg, *configPath); err != nil {
 			fatal("init", err)
 		}
-		personaPath := filepath.Join(filepath.Dir(*configPath), "persona.json")
+		personaPath := cfg.PersonaPath(*configPath)
 		if err := persona.Save(p, personaPath); err != nil {
 			fatal("init", err)
 		}
@@ -176,7 +175,7 @@ func run(configPath string) {
 	}
 	defer lg.Close()
 
-	personaPath := filepath.Join(filepath.Dir(configPath), "persona.json")
+	personaPath := cfg.PersonaPath(configPath)
 	p, err := persona.LoadOrCreate(personaPath)
 	if err != nil {
 		fatal("persona", err)
