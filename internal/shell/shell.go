@@ -381,6 +381,72 @@ func stageString(st statement) string {
 	return strings.Join(parts, " | ")
 }
 
+// binDirs are the absolute directories a bare command resolves under, so an
+// attacker's /bin/uname or /usr/bin/nproc dispatches to the same handler as uname.
+var binDirs = map[string]bool{
+	"/bin/": true, "/sbin/": true, "/usr/bin/": true, "/usr/sbin/": true,
+	"/usr/local/bin/": true, "/usr/local/sbin/": true,
+}
+
+// busyboxAppletList is the applet set this BusyBox advertises. Running `busybox X`
+// for a listed applet re-dispatches to the shell's handler; an unlisted name gets
+// "applet not found", which is exactly the response a Mirai-class loader probes for
+// with `busybox <random>` to confirm BusyBox is present.
+var busyboxAppletList = []string{
+	"[", "[[", "ash", "awk", "base64", "basename", "cat", "chmod", "chown", "cp",
+	"cut", "date", "dd", "df", "dmesg", "echo", "egrep", "env", "false", "fgrep",
+	"free", "ftpget", "ftpput", "grep", "gunzip", "gzip", "head", "hostname", "id",
+	"ifconfig", "kill", "killall", "ln", "login", "ls", "md5sum", "mkdir", "mount",
+	"mv", "nc", "netstat", "nproc", "passwd", "ping", "printf", "ps", "pwd",
+	"reboot", "rm", "rmdir", "route", "sed", "sh", "sleep", "sort", "tail", "tar",
+	"telnet", "tftp", "top", "touch", "tr", "true", "uname", "uniq", "uptime", "wc",
+	"wget", "which", "whoami",
+}
+
+var busyboxApplets = func() map[string]bool {
+	m := make(map[string]bool, len(busyboxAppletList))
+	for _, a := range busyboxAppletList {
+		m[a] = true
+	}
+	return m
+}()
+
+// cmdBusybox is the BusyBox multicall entry. No applet prints the banner; a known
+// applet re-dispatches to the shell's command for it (so `busybox uname -m` works
+// the way a real device's busybox does); an unknown applet returns "applet not
+// found" (the Mirai busybox-presence check).
+func (sh *Shell) cmdBusybox(args []string) (string, int) {
+	if len(args) == 1 {
+		return sh.busyboxBanner(), 0
+	}
+	applet := args[1]
+	if i := strings.LastIndexByte(applet, '/'); i >= 0 {
+		applet = applet[i+1:]
+	}
+	if applet == "--list" || applet == "--list-full" {
+		return strings.Join(busyboxAppletList, "\n") + "\n", 0
+	}
+	if busyboxApplets[applet] {
+		return sh.runCommand(append([]string{applet}, args[2:]...), "")
+	}
+	return applet + ": applet not found\n", 127
+}
+
+func (sh *Shell) busyboxBanner() string {
+	return "BusyBox v" + sh.p.BusyBoxVer + " (Ubuntu 1:" + sh.p.BusyBoxVer + "-2ubuntu1) multi-call binary.\n" +
+		"BusyBox is copyright (C) 1998-2022 Erik Andersen, Rob Landley, Denys Vlasenko\n" +
+		"and others. Licensed under GPLv2. See source distribution for detailed\n" +
+		"copyright notices.\n\n" +
+		"Usage: busybox [function [arguments]...]\n" +
+		"   or: busybox --list[-full]\n" +
+		"   or: function [arguments]...\n\n" +
+		"\tBusyBox is a multi-call binary that combines many common Unix\n" +
+		"\tutilities into a single executable.  Most people will create a\n" +
+		"\tlink to busybox for each function they wish to use and BusyBox\n" +
+		"\twill act like whatever it was invoked as.\n\n" +
+		"Currently defined functions:\n\t" + strings.Join(busyboxAppletList, ", ") + "\n"
+}
+
 // cmdTest implements the [ / test builtin: it evaluates a condition and returns an
 // exit code (0 true, 1 false) with no output, so chains like `[ -f X ] && cmd`
 // work. It covers the predicates loader recon uses: -f/-d/-e/-s/-r/-w/-x file
@@ -468,6 +534,12 @@ func (sh *Shell) evalTest(a []string) bool {
 // exit code.
 func (sh *Shell) runCommand(args []string, stdin string) (string, int) {
 	base := args[0]
+	// Resolve an absolute /bin, /sbin, /usr/bin, ... path to its command name, the
+	// way the loaders' /bin/uname, /usr/bin/nproc, /bin/busybox fallbacks expect.
+	if i := strings.LastIndexByte(base, '/'); i >= 0 && binDirs[base[:i+1]] {
+		base = base[i+1:]
+		args = append([]string{base}, args[1:]...)
+	}
 	switch base {
 	case "exit", "logout":
 		// `quit` is deliberately absent: it is not a bash builtin, so it must fall
@@ -480,6 +552,8 @@ func (sh *Shell) runCommand(args []string, stdin string) (string, int) {
 		return sh.cmdCat(args)
 	case "[", "test":
 		return sh.cmdTest(args)
+	case "busybox":
+		return sh.cmdBusybox(args)
 	case "pwd":
 		return sh.fs.Cwd() + "\n", 0
 	case "cd":

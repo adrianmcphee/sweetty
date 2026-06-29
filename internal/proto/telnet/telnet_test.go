@@ -526,6 +526,27 @@ func TestSubshellsGroupsNewlines(t *testing.T) {
 	// (newline-as-statement-separator is covered at the parser level in parse_test.go)
 }
 
+// TestBusyboxAndPathResolution checks the BusyBox multicall (run an applet, the
+// Mirai applet-not-found presence probe, the banner) and that absolute /bin paths
+// resolve to their command.
+func TestBusyboxAndPathResolution(t *testing.T) {
+	h, p := setup(t, "ubuntu")
+	login(t, h, p, "root")
+
+	if out := run(h, `busybox uname -m`); !strings.Contains(out, p.Arch) {
+		t.Errorf("busybox uname -m did not run the applet: %.120q", out)
+	}
+	if out := run(h, `busybox ECHODONE`); !strings.Contains(out, "ECHODONE: applet not found") {
+		t.Errorf("busybox <unknown> should be 'applet not found': %.120q", out)
+	}
+	if out := run(h, `/bin/busybox`); !strings.Contains(out, "BusyBox v"+p.BusyBoxVer) {
+		t.Errorf("/bin/busybox banner missing version: %.120q", out)
+	}
+	if out := run(h, `/bin/uname -m`); !strings.Contains(out, p.Arch) {
+		t.Errorf("/bin/uname -m did not resolve: %.120q", out)
+	}
+}
+
 func TestBaitImageRevealsTheGag(t *testing.T) {
 	h, p := setup(t, "ubuntu")
 	login(t, h, p, "root")
