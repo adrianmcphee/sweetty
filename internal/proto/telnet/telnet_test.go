@@ -465,6 +465,28 @@ func TestPivotToJustinTimberlakeHost(t *testing.T) {
 // TestBaitImageRevealsTheGag proves the payoff: however an attacker grabs a bait
 // image, they get the colour-ANSI reveal, not a real secret. cat dumps it to the
 // terminal; base64 carries it off the box; both are captured as honeytoken hits.
+// TestCommandSubstitution checks $(...) and backticks run an inner command and
+// splice its stdout, including the loader idiom ls -lh $(which ls) (which must not
+// split on the inner space) and var=$(cmd) capture.
+func TestCommandSubstitution(t *testing.T) {
+	h, p := setup(t, "ubuntu")
+	login(t, h, p, "root")
+
+	if out := run(h, `echo "OS:$(uname -s)"`); !strings.Contains(out, "OS:Linux") {
+		t.Errorf("$(uname -s) not substituted: %.120q", out)
+	}
+	run(h, `X=$(echo hello)`)
+	if out := run(h, `echo got=$X`); !strings.Contains(out, "got=hello") {
+		t.Errorf("var=$(...) did not capture: %.120q", out)
+	}
+	if out := run(h, `echo LS=$(which ls)`); !strings.Contains(out, "LS=/") {
+		t.Errorf("$(which ls) split on the space or did not resolve: %.120q", out)
+	}
+	if out := run(h, "echo bt=`uname -m`"); !strings.Contains(out, "bt=") || strings.Contains(out, "`") {
+		t.Errorf("backtick substitution failed: %.120q", out)
+	}
+}
+
 func TestBaitImageRevealsTheGag(t *testing.T) {
 	h, p := setup(t, "ubuntu")
 	login(t, h, p, "root")

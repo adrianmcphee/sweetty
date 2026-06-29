@@ -110,6 +110,40 @@ func tokenize(line string) []token {
 				toks = append(toks, token{val: "2>", op: true})
 				i += 2
 			}
+		case c == '$' && i+1 < len(line) && line[i+1] == '(':
+			// Keep a $(...) command substitution as one word, balancing nested
+			// parens, so a space inside it does not split the token (e.g. the loader
+			// idiom `ls -lh $(which ls)`). expand() evaluates it later.
+			has = true
+			cur.WriteByte('$')
+			cur.WriteByte('(')
+			depth := 1
+			j := i + 2
+			for j < len(line) && depth > 0 {
+				switch line[j] {
+				case '(':
+					depth++
+				case ')':
+					depth--
+				}
+				cur.WriteByte(line[j])
+				j++
+			}
+			i = j
+		case c == '`':
+			// Likewise keep a `...` backtick substitution as one word.
+			has = true
+			cur.WriteByte('`')
+			j := i + 1
+			for j < len(line) && line[j] != '`' {
+				cur.WriteByte(line[j])
+				j++
+			}
+			if j < len(line) {
+				cur.WriteByte('`')
+				j++
+			}
+			i = j
 		default:
 			has = true
 			cur.WriteByte(c)

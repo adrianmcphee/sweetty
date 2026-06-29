@@ -41,6 +41,9 @@ type Shell struct {
 	pivot     PivotResolver
 	execDepth int    // re-entry depth for sh -c / base64-decoded commands
 	cron      string // crontab installed this session, so crontab -l echoes what -e/<file> set
+	// capture, when non-nil, receives command output instead of the terminal, so
+	// $(...) and backticks can run a sub-command and read back its stdout.
+	capture *strings.Builder
 }
 
 // maxExecDepth bounds how deeply a command may re-enter the shell (via `sh -c`,
@@ -191,7 +194,7 @@ func (sh *Shell) runStatement(st statement) {
 	// Statement of only assignments sets session env, prints nothing.
 	if len(st.stages) == 1 && len(st.stages[0].args) == 0 {
 		for k, v := range st.stages[0].assigns {
-			sh.env[k] = v
+			sh.env[k] = sh.expand(v) // so VAR=$(cmd) and VAR=$OTHER store the value
 		}
 		sh.last = 0
 		return
@@ -246,6 +249,12 @@ func (sh *Shell) emit(stg stage, out string) {
 		}
 		return
 	}
+	// Inside a $(...) or backtick substitution, output is collected into a buffer
+	// the substitution reads back, not written to the terminal (and not CRLF-translated).
+	if sh.capture != nil {
+		sh.capture.WriteString(out)
+		return
+	}
 	if out == "" {
 		return
 	}
@@ -264,13 +273,41 @@ func (sh *Shell) expandStage(stg stage) []string {
 }
 
 func (sh *Shell) expand(w string) string {
-	if !strings.Contains(w, "$") {
+	if !strings.ContainsAny(w, "$`") {
 		return w
 	}
 	var b strings.Builder
 	for i := 0; i < len(w); i++ {
-		if w[i] != '$' {
-			b.WriteByte(w[i])
+		c := w[i]
+		if c == '`' {
+			j := i + 1
+			for j < len(w) && w[j] != '`' {
+				j++
+			}
+			b.WriteString(sh.cmdSub(w[i+1 : j]))
+			i = j // the loop's i++ moves past the closing backtick (or the end)
+			continue
+		}
+		if c != '$' {
+			b.WriteByte(c)
+			continue
+		}
+		if i+1 < len(w) && w[i+1] == '(' {
+			depth := 1
+			j := i + 2
+			for j < len(w) {
+				if w[j] == '(' {
+					depth++
+				} else if w[j] == ')' {
+					depth--
+					if depth == 0 {
+						break
+					}
+				}
+				j++
+			}
+			b.WriteString(sh.cmdSub(w[i+2 : j]))
+			i = j // at the matching ')'; the loop's i++ moves past it
 			continue
 		}
 		if i+1 < len(w) && w[i+1] == '?' {
@@ -304,6 +341,32 @@ func (sh *Shell) getenv(name string) string {
 		return v
 	}
 	return ""
+}
+
+// cmdSub runs the inner text of a $(...) or `...` substitution and returns its
+// captured stdout the way bash does: trailing newlines stripped, embedded newlines
+// folded to spaces (an approximation of unquoted word-splitting that suits the
+// recon one-liners attackers run).
+func (sh *Shell) cmdSub(inner string) string {
+	out := sh.runCaptured(inner)
+	out = strings.Trim(out, "\n")
+	return strings.ReplaceAll(out, "\n", " ")
+}
+
+// runCaptured runs a command line with its terminal output redirected into a
+// buffer and returns it, for command substitution. It is bounded by the same
+// exec-depth guard as any sub-shell so a self-referential $(...) cannot recurse
+// without limit.
+func (sh *Shell) runCaptured(line string) string {
+	if sh.execDepth >= maxExecDepth {
+		return ""
+	}
+	prev := sh.capture
+	var buf strings.Builder
+	sh.capture = &buf
+	sh.runLine(line)
+	sh.capture = prev
+	return buf.String()
 }
 
 func isAlnum(c byte) bool {
