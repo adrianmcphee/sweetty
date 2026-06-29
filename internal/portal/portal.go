@@ -109,6 +109,7 @@ func (p *Portal) dashRoutes(dash *gin.RouterGroup) {
 	dash.GET("/events", p.events)
 	dash.GET("/log", p.logQuery)
 	dash.GET("/honeytokens", p.honeytokens)
+	dash.GET("/payloads", p.payloads)
 	dash.GET("/overview", p.overview)
 	dash.GET("/consoles", p.consoleList)
 	dash.Any("/console/*rest", p.console)

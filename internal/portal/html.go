@@ -188,6 +188,7 @@ nav{flex:1;overflow-y:auto;padding:4px 10px 10px}
 <div class="navitem active" data-view="feed"><span data-icon="feed"></span><span class="grow">Live feed</span></div>
 <div class="navitem" data-view="sources"><span data-icon="sources"></span><span class="grow">Sources</span><span class="navbadge" id="nav_src">0</span></div>
 <div class="navitem" data-view="recon"><span data-icon="scan"></span><span class="grow">Recon</span></div>
+<div class="navitem" data-view="payloads"><span data-icon="downloads"></span><span class="grow">Payload pulls</span><span class="navbadge" id="nav_pl">0</span></div>
 <div class="navitem" data-view="honeytokens"><span data-icon="bait"></span><span class="grow">90s JT Reveals</span><span class="navbadge" id="nav_ht">0</span></div>
 <div class="navsec" id="consoles_sec" style="display:none">Consoles</div>
 <div id="consoles"></div>
@@ -208,7 +209,7 @@ nav{flex:1;overflow-y:auto;padding:4px 10px 10px}
 <div class="cards">
 <div class="card statcard"><div class="top"><span class="ico t-blue" data-icon="sessions"></span><span class="lbl">Sessions today</span></div><div class="num" id="s_sessions">0</div></div>
 <div class="card statcard"><div class="top"><span class="ico t-green" data-icon="ips"></span><span class="lbl">Unique sources</span></div><div class="num" id="s_ips">0</div></div>
-<div class="card statcard"><div class="top"><span class="ico t-red" data-icon="downloads"></span><span class="lbl">Payload pulls</span></div><div class="num" id="s_dl">0</div></div>
+<div class="card statcard click" id="dl_card"><div class="top"><span class="ico t-red" data-icon="downloads"></span><span class="lbl">Payload pulls</span></div><div class="num" id="s_dl">0</div></div>
 <div class="card statcard click" id="bait_card"><div class="top"><span class="ico t-teal" data-icon="bait"></span><span class="lbl">90s JT Reveals</span></div><div class="num" id="s_ht">0</div></div>
 <div class="card statcard click" id="scan_card"><div class="top"><span class="ico t-red" data-icon="scan"></span><span class="lbl">Port scans</span></div><div class="num" id="s_scans">0</div></div>
 </div>
@@ -223,6 +224,13 @@ nav{flex:1;overflow-y:auto;padding:4px 10px 10px}
 <div class="panel">
 <div class="panelhead"><span data-icon="sources"></span>Sources<span class="sp" style="flex:1"></span><span class="count" id="src_count">0</span></div>
 <div class="scroll" id="sources"></div>
+</div>
+</section>
+
+<section class="view" id="view_payloads">
+<div class="panel">
+<div class="panelhead"><span data-icon="downloads"></span>Payload pulls<span class="sp" style="flex:1"></span><span class="count" id="plv_count">0</span></div>
+<div class="scroll" id="plview"></div>
 </div>
 </section>
 
@@ -372,11 +380,12 @@ notify(e);
 bumpUnseen();
 if(curView==='sources'||curView==='recon')scheduleOverview();
 if(curView==='honeytokens'&&e.event==='HONEYTOKEN')loadHoneytokens();
+if(curView==='payloads'&&e.event==='DOWNLOAD_ATTEMPT')loadPayloads();
 if(e.event==='SESSION_END')loadRecordings();
 if(detailIP&&srcOf(e)===detailIP)scheduleDetailRefresh();
 }
 
-var VIEWS={feed:['Live feed','streaming events as they arrive'],sources:['Sources','every host that has touched the honeypot'],recon:['Recon','port scans, geography, and client tooling'],honeytokens:['90s JT Reveals','attackers who dug far enough to hit a Justin Timberlake reveal']};
+var VIEWS={feed:['Live feed','streaming events as they arrive'],sources:['Sources','every host that has touched the honeypot'],recon:['Recon','port scans, geography, and client tooling'],payloads:['Payload pulls','the malware URLs attackers tried to fetch, by source'],honeytokens:['90s JT Reveals','attackers who dug far enough to hit a Justin Timberlake reveal']};
 var curView='feed';
 function showView(name){
 curView=name;
@@ -387,6 +396,7 @@ for(var j=0;j<vs.length;j++)vs[j].classList.toggle('active',vs[j].id==='view_'+n
 document.getElementById('view_title').textContent=VIEWS[name][0];
 document.getElementById('view_sub').textContent=VIEWS[name][1];
 if(name==='sources'||name==='recon')loadOverview();
+if(name==='payloads')loadPayloads();
 if(name==='honeytokens')loadHoneytokens();
 }
 
@@ -487,7 +497,7 @@ setNum('r_agents',t.user_agents||0);
 setNum('r_attempts',(t.credentials||0)+(t.http_requests||0)+(t.exec||0)+(t.downloads||0));
 var td=overview.today||{};
 setNum('s_sessions',td.sessions||0);setNum('s_ips',td.sources||0);setNum('s_dl',td.downloads||0);
-setNum('s_ht',td.bait||0);setNum('s_scans',td.port_scans||0);setNum('nav_ht',td.bait||0);
+setNum('s_ht',td.bait||0);setNum('s_scans',td.port_scans||0);setNum('nav_ht',td.bait||0);setNum('nav_pl',td.downloads||0);
 var bv=document.getElementById('build_ver');if(bv&&overview.version)bv.textContent=overview.version;
 if(curView==='sources')renderSources();
 if(curView==='recon')renderRecon();
@@ -533,6 +543,50 @@ var g=el('span','geotag');g.appendChild(el('span','tag',s.country||s.scope||'?')
 div.appendChild(g);
 var when=hms(s.last_seen),tk=(s.tokens||[]).join(', ');
 div.appendChild(el('span','htk',tk+(when?'   '+when:'')));
+div.addEventListener('click',function(){openIP(s.ip);});
+return div;
+}
+
+function loadPayloads(){
+fetch('/dashboard/payloads',{credentials:'same-origin'})
+.then(function(r){return r.json();})
+.then(renderPayloads).catch(function(){});
+}
+function renderPayloads(d){
+var box=document.getElementById('plview');
+box.textContent='';
+var srcs=d.sources||[];
+setNum('plv_count',srcs.length);
+var byUrl=d.by_url||{};
+var bar=el('div','htbar');
+bar.appendChild(metric(d.total||0,'pulls'));
+bar.appendChild(metric(d.unique_srcs||0,'sources'));
+bar.appendChild(metric(Object.keys(byUrl).length,'distinct urls'));
+var geo=el('div','m');geo.appendChild(el('b',null,d.geo_active?'on':'off'));geo.appendChild(el('span',null,'country db'));
+bar.appendChild(geo);
+box.appendChild(bar);
+var urls=Object.keys(byUrl).sort(function(a,b){return byUrl[b]-byUrl[a];});
+if(urls.length){
+var chips=el('div','chips');
+for(var i=0;i<urls.length;i++){
+var ch=el('span','chip');
+ch.appendChild(el('span','ck',urls[i]));
+ch.appendChild(el('b',null,'x'+byUrl[urls[i]]));
+chips.appendChild(ch);
+}
+box.appendChild(chips);
+}
+if(!srcs.length){box.appendChild(el('div','empty','No payload pulls yet. They land here when an attacker runs wget/curl/tftp to fetch a second-stage binary.'));return;}
+for(var j=0;j<srcs.length;j++)box.appendChild(plRow(srcs[j]));
+}
+function plRow(s){
+var div=el('div','htrow');
+div.appendChild(el('span','hc','x'+s.count));
+div.appendChild(el('span','hip',s.ip));
+var g=el('span','geotag');g.appendChild(el('span','tag',s.country||s.scope||'?'));if(s.org)g.appendChild(el('span','tag',s.org));
+div.appendChild(g);
+var when=hms(s.last_seen),u=(s.urls||[]).join('   ');
+div.appendChild(el('span','htk',u+(when?'   '+when:'')));
 div.addEventListener('click',function(){openIP(s.ip);});
 return div;
 }
@@ -863,6 +917,7 @@ es.onerror=function(){setConn(false);};
 var navs=document.querySelectorAll('.navitem[data-view]');
 for(var i=0;i<navs.length;i++)navs[i].addEventListener('click',function(){showView(this.getAttribute('data-view'));});
 document.getElementById('bait_card').addEventListener('click',function(){showView('honeytokens');});
+document.getElementById('dl_card').addEventListener('click',function(){showView('payloads');});
 document.getElementById('scan_card').addEventListener('click',function(){showView('recon');});
 
 paintIcons();
