@@ -1,0 +1,6 @@
+# The colour-ASCII art payloads (libcaca output) embedded into the WordPress
+# break-in trap are generated assets, not source. Mark them generated so GitHub's
+# Linguist keeps them out of the repository's language stats and collapses them in
+# diffs; otherwise these multi-megabyte files dwarf the Go and mislabel the repo.
+internal/proto/http/secrets.html linguist-generated=true
+internal/proto/http/backup.html  linguist-generated=true
