@@ -507,6 +507,25 @@ func TestBracketTestBuiltin(t *testing.T) {
 	}
 }
 
+// TestSubshellsGroupsNewlines checks ( ) subshells and { } groups run inline and
+// compose with $(), and that a newline separates statements (multi-line scripts).
+func TestSubshellsGroupsNewlines(t *testing.T) {
+	h, p := setup(t, "ubuntu")
+	login(t, h, p, "root")
+
+	if out := run(h, `( echo a; echo b )`); !strings.Contains(out, "a") || !strings.Contains(out, "b") {
+		t.Errorf("subshell () did not run inline: %.120q", out)
+	}
+	if out := run(h, `{ echo x; echo y; }`); !strings.Contains(out, "x") || !strings.Contains(out, "y") {
+		t.Errorf("group {} did not run inline: %.120q", out)
+	}
+	run(h, `M=$( { echo m1; echo m2; } )`)
+	if out := run(h, `echo CPU=$M`); !strings.Contains(out, "CPU=m1 m2") {
+		t.Errorf("group inside $() not captured: %.120q", out)
+	}
+	// (newline-as-statement-separator is covered at the parser level in parse_test.go)
+}
+
 func TestBaitImageRevealsTheGag(t *testing.T) {
 	h, p := setup(t, "ubuntu")
 	login(t, h, p, "root")

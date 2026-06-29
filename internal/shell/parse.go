@@ -46,6 +46,19 @@ func tokenize(line string) []token {
 		case c == ' ' || c == '\t':
 			flush()
 			i++
+		case c == '\n' || c == '\r':
+			// A newline separates statements, the way a pasted multi-line script's
+			// lines do; treat it like ';'. (Loaders send multi-line recon as one blob.)
+			flush()
+			toks = append(toks, token{val: ";", op: true})
+			i++
+		case c == '(' || c == ')':
+			// Subshell grouping. The honeypot does not isolate a real subshell; it
+			// runs the inner commands inline, so the parens are emitted as bare tokens
+			// that parse() drops. (A $(...) is consumed whole by the case below.)
+			flush()
+			toks = append(toks, token{val: string(c)})
+			i++
 		case c == '\'':
 			has = true
 			j := i + 1
@@ -181,6 +194,12 @@ func parse(line string) []statement {
 	for i := 0; i < len(toks); i++ {
 		t := toks[i]
 		if !t.op {
+			// Grouping markers: the honeypot runs ( ) subshells and { } groups inline,
+			// so the bare braces/parens are dropped rather than treated as a command.
+			switch t.val {
+			case "(", ")", "{", "}":
+				continue
+			}
 			// leading assignment only while no args yet in this stage
 			if len(stg.args) == 0 {
 				if k, v, ok := splitAssign(t.val); ok {

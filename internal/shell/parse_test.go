@@ -5,6 +5,26 @@ import (
 	"testing"
 )
 
+// TestParseNewlineAndGroups checks a newline separates statements (multi-line
+// scripts) and that ( ) / { } grouping markers are dropped so groups run inline.
+func TestParseNewlineAndGroups(t *testing.T) {
+	stmts := parse("echo one\necho two")
+	if len(stmts) != 2 {
+		t.Fatalf("newline: got %d statements, want 2", len(stmts))
+	}
+	if got := stmts[0].stages[0].args; !reflect.DeepEqual(got, []string{"echo", "one"}) {
+		t.Errorf("newline stmt0 args = %v", got)
+	}
+	g := parse("( echo a )")
+	if len(g) != 1 || !reflect.DeepEqual(g[0].stages[0].args, []string{"echo", "a"}) {
+		t.Errorf("subshell parens not dropped: %+v", g)
+	}
+	b := parse("{ echo x; echo y; }")
+	if len(b) != 2 || !reflect.DeepEqual(b[0].stages[0].args, []string{"echo", "x"}) {
+		t.Errorf("group braces not dropped: %+v", b)
+	}
+}
+
 // TestParseChainingQuotingEnv exercises the parser subset: chaining operators,
 // pipelines, leading assignments, redirects, and quoting.
 func TestParseChainingQuotingEnv(t *testing.T) {
