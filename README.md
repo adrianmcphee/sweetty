@@ -6,6 +6,11 @@ The design goal is simple: **every attacker interaction is logged, automated sca
 
 SweeTTY is built from scratch in Go and kept deliberately dependency-light. The protocol emulations, the fake shell (including the telnet/IAC layer), and the virtual filesystem are implemented directly against the standard library, so the honeypot owns the exact bytes on the wire. Only a few well-scoped libraries are pulled in where they clearly earn their place, such as [Gin](https://github.com/gin-gonic/gin) for the management portal. The authoritative dependency list is [`go.mod`](./go.mod).
 
+> ### 🚀 Want to deploy this?
+> This repo is the **product**. To stand up a real, hardened sensor — HAProxy edge, blue/green releases, firewall, network isolation, randomized management port, and step-by-step setup written for both humans and AI agents — use the companion repo:
+>
+> **➡️ [`sweetty-instance-template`](https://github.com/adrianmcphee/sweetty-instance-template)**
+
 ---
 
 ## What it does
