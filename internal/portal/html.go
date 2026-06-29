@@ -842,7 +842,10 @@ sndBtn.title=on?'Sound alerts on':'Sound alerts off';
 try{localStorage.setItem('sweetty_snd',on?'1':'0');}catch(x){}
 if(on)ensureAudio();
 }
-sndBtn.addEventListener('click',function(){setSound(!soundOn);});
+// Chime on enable, within the click gesture (which also resumes the audio
+// context), so turning sound on gives immediate proof it works — the high-signal
+// alerts themselves are rare by design, so silence after a toggle reads as broken.
+sndBtn.addEventListener('click',function(){setSound(!soundOn);if(soundOn){tone(988,0,0.10,'triangle',0.11);tone(1318.51,0.09,0.13,'triangle',0.11);}});
 // Browsers keep a freshly created AudioContext suspended until a user gesture;
 // resume it on the first click anywhere so a restored "on" preference can sound.
 function gestureResume(){if(soundOn)ensureAudio();document.removeEventListener('pointerdown',gestureResume);}
