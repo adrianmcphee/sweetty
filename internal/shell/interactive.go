@@ -92,7 +92,7 @@ func lootImageBytes(abs string) []byte {
 		// Spread the generic stash across the headshots deterministically by name, so
 		// a given bait file always yields the same picture (coherent on repeated
 		// reads) while different files vary.
-		gens := []string{"jt3", "jt5"}
+		gens := []string{"jt3", "jt5", "jt6"}
 		var h uint32
 		for _, c := range []byte(name) {
 			h = h*131 + uint32(c)

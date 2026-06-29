@@ -62,10 +62,11 @@ type Protocol struct {
 	// wp* track WordPress login pressure per source so the admin "gives" only
 	// after persistent credential-stuffing, never to a one-shot bot. Guarded by mu
 	// because one Protocol serves every connection on the listener concurrently.
-	mu          sync.Mutex
-	wpTries     map[string]int
-	wpBroken    map[string]bool
-	wpAdminHits map[string]int
+	mu             sync.Mutex
+	wpTries        map[string]int
+	wpBroken       map[string]bool
+	wpAdminHits    map[string]int
+	wpRevealLogged map[string]bool
 }
 
 // New returns an HTTP protocol bound to the given persona and style. The style
@@ -73,12 +74,13 @@ type Protocol struct {
 // to a plain static server.
 func New(p *persona.Persona, style string) server.Protocol {
 	return &Protocol{
-		persona:     p,
-		style:       style,
-		sleep:       time.Sleep,
-		wpTries:     make(map[string]int),
-		wpBroken:    make(map[string]bool),
-		wpAdminHits: make(map[string]int),
+		persona:        p,
+		style:          style,
+		sleep:          time.Sleep,
+		wpTries:        make(map[string]int),
+		wpBroken:       make(map[string]bool),
+		wpAdminHits:    make(map[string]int),
+		wpRevealLogged: make(map[string]bool),
 	}
 }
 
@@ -409,11 +411,19 @@ func (pr *Protocol) respondWordPress(s *server.Session, srcIP, method, path, bod
 		// A source that has broken in lands in the dashboard; what it sees deepens
 		// with how much it pokes around. Everyone else is bounced to the login like
 		// a real wp-admin guard.
-		switch pr.wpAdminReveal(srcIP) {
-		case "deep":
-			return apacheResponse(200, "OK", "text/html; charset=UTF-8", wpBackupPage(pr.persona), base), loginPageDelay
-		case "first":
-			return apacheResponse(200, "OK", "text/html; charset=UTF-8", wpSecretsPage(pr.persona), base), loginPageDelay
+		switch r := pr.wpAdminReveal(srcIP); r {
+		case "deep", "first":
+			// Reaching the wp-admin JT reveal is a 90s JT Reveal, logged as a
+			// HONEYTOKEN once per source (not on every dashboard view) so the web
+			// path is tracked alongside the shell loot reveals.
+			if s != nil && pr.wpLogReveal(srcIP) {
+				s.LogHoneytoken("jt-reveal:wp-admin", "wordpress break-in reveal ("+r+")")
+			}
+			page := wpSecretsPage(pr.persona)
+			if r == "deep" {
+				page = wpBackupPage(pr.persona)
+			}
+			return apacheResponse(200, "OK", "text/html; charset=UTF-8", page, base), loginPageDelay
 		default:
 			h := withHeader(base, "Location", "/wp-login.php?redirect_to=%2Fwp-admin%2F&reauth=1")
 			return apacheResponse(302, "Found", "", "", h), 0
@@ -508,6 +518,18 @@ func (pr *Protocol) wpAdminReveal(srcIP string) string {
 		return "deep"
 	}
 	return "first"
+}
+
+// wpLogReveal reports whether this is the first time srcIP has reached the wp-admin
+// JT reveal, so the honeytoken is logged once per source rather than on every view.
+func (pr *Protocol) wpLogReveal(srcIP string) bool {
+	pr.mu.Lock()
+	defer pr.mu.Unlock()
+	if pr.wpRevealLogged[srcIP] {
+		return false
+	}
+	pr.wpRevealLogged[srcIP] = true
+	return true
 }
 
 // parseWPLogin pulls the username and password from a wp-login POST body (the

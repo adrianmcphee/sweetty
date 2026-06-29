@@ -67,6 +67,21 @@ func TestWPLoginRevealsOnlyAfterWork(t *testing.T) {
 	}
 }
 
+// TestWPRevealLoggedOncePerSource checks the wp-admin JT reveal is recorded as a
+// 90s JT Reveal once per source, not on every dashboard view.
+func TestWPRevealLoggedOncePerSource(t *testing.T) {
+	pr := New(persona.Generate(), "wordpress").(*Protocol)
+	if !pr.wpLogReveal("1.2.3.4") {
+		t.Fatal("first reveal for a source should log")
+	}
+	if pr.wpLogReveal("1.2.3.4") {
+		t.Fatal("a repeat reveal for the same source must not log again")
+	}
+	if !pr.wpLogReveal("5.6.7.8") {
+		t.Fatal("a different source should log its own reveal")
+	}
+}
+
 // TestJTArtEmbedded confirms the art is compiled in and stripped to its body.
 func TestJTArtEmbedded(t *testing.T) {
 	if len(jtArtBody) < 1000 {

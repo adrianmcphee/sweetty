@@ -188,7 +188,7 @@ nav{flex:1;overflow-y:auto;padding:4px 10px 10px}
 <div class="navitem active" data-view="feed"><span data-icon="feed"></span><span class="grow">Live feed</span></div>
 <div class="navitem" data-view="sources"><span data-icon="sources"></span><span class="grow">Sources</span><span class="navbadge" id="nav_src">0</span></div>
 <div class="navitem" data-view="recon"><span data-icon="scan"></span><span class="grow">Recon</span></div>
-<div class="navitem" data-view="honeytokens"><span data-icon="bait"></span><span class="grow">Honeytokens</span><span class="navbadge" id="nav_ht">0</span></div>
+<div class="navitem" data-view="honeytokens"><span data-icon="bait"></span><span class="grow">90s JT Reveals</span><span class="navbadge" id="nav_ht">0</span></div>
 <div class="navsec" id="consoles_sec" style="display:none">Consoles</div>
 <div id="consoles"></div>
 </nav>
@@ -208,7 +208,7 @@ nav{flex:1;overflow-y:auto;padding:4px 10px 10px}
 <div class="card statcard"><div class="top"><span class="ico t-blue" data-icon="sessions"></span><span class="lbl">Sessions today</span></div><div class="num" id="s_sessions">0</div></div>
 <div class="card statcard"><div class="top"><span class="ico t-green" data-icon="ips"></span><span class="lbl">Unique sources</span></div><div class="num" id="s_ips">0</div></div>
 <div class="card statcard"><div class="top"><span class="ico t-red" data-icon="downloads"></span><span class="lbl">Download attempts</span></div><div class="num" id="s_dl">0</div></div>
-<div class="card statcard click" id="bait_card"><div class="top"><span class="ico t-teal" data-icon="bait"></span><span class="lbl">Bait tripped</span></div><div class="num" id="s_ht">0</div></div>
+<div class="card statcard click" id="bait_card"><div class="top"><span class="ico t-teal" data-icon="bait"></span><span class="lbl">90s JT Reveals</span></div><div class="num" id="s_ht">0</div></div>
 <div class="card statcard click" id="scan_card"><div class="top"><span class="ico t-red" data-icon="scan"></span><span class="lbl">Port scans</span></div><div class="num" id="s_scans">0</div></div>
 </div>
 <div class="panel">
@@ -227,7 +227,7 @@ nav{flex:1;overflow-y:auto;padding:4px 10px 10px}
 
 <section class="view" id="view_honeytokens">
 <div class="panel">
-<div class="panelhead"><span data-icon="bait"></span>Honeytokens<span class="sp" style="flex:1"></span><span class="count" id="htv_count">0</span></div>
+<div class="panelhead"><span data-icon="bait"></span>90s JT Reveals<span class="sp" style="flex:1"></span><span class="count" id="htv_count">0</span></div>
 <div class="scroll" id="htview"></div>
 </div>
 </section>
@@ -375,7 +375,7 @@ if(e.event==='SESSION_END')loadRecordings();
 if(detailIP&&srcOf(e)===detailIP)scheduleDetailRefresh();
 }
 
-var VIEWS={feed:['Live feed','streaming events as they arrive'],sources:['Sources','every host that has touched the honeypot'],recon:['Recon','port scans, geography, and client tooling'],honeytokens:['Honeytokens','planted bait and who tripped it']};
+var VIEWS={feed:['Live feed','streaming events as they arrive'],sources:['Sources','every host that has touched the honeypot'],recon:['Recon','port scans, geography, and client tooling'],honeytokens:['90s JT Reveals','attackers who dug far enough to hit a Justin Timberlake reveal']};
 var curView='feed';
 function showView(name){
 curView=name;
@@ -519,7 +519,7 @@ chips.appendChild(ch);
 }
 box.appendChild(chips);
 }
-if(!srcs.length){box.appendChild(el('div','empty','No bait has been tripped yet.'));return;}
+if(!srcs.length){box.appendChild(el('div','empty','No JT reveals yet. Attackers have to dig to the loot first.'));return;}
 for(var j=0;j<srcs.length;j++)box.appendChild(htRow(srcs[j]));
 }
 function metric(v,label){var m=el('div','m');m.appendChild(el('b',null,v));m.appendChild(el('span',null,label));return m;}
@@ -698,7 +698,7 @@ var suppressNotify=false,sseStarted=false,suppressT=0;
 // that drives the Sources and Recon views and the port-scan stat card.
 var overview=null,overviewT=0;
 var NOTABLE={DOWNLOAD_ATTEMPT:1,EXEC_ATTEMPT:1,HONEYTOKEN:1};
-var LABELS={DOWNLOAD_ATTEMPT:'Download attempt',EXEC_ATTEMPT:'Exec attempt',HONEYTOKEN:'Bait tripped'};
+var LABELS={DOWNLOAD_ATTEMPT:'Download attempt',EXEC_ATTEMPT:'Exec attempt',HONEYTOKEN:'90s JT Reveal'};
 function labelOf(ev){return LABELS[ev]||ev;}
 
 // flashColor turns an event colour into the translucent tint a new row briefly
