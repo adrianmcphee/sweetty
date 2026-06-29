@@ -30,7 +30,12 @@ const proxyHeaderTimeout = 5 * time.Second
 // bare-connect port-scan path quickly. Production never changes it.
 var scanGrace = 8 * time.Second
 
-const maxConnsPerIP = 25
+// maxConnsPerIP caps concurrent connections from a single source so one aggressive
+// brute-forcer cannot exhaust the box and blind capture. Set generously: an idle
+// sensor has ample headroom (goroutines and FDs are cheap, the process-wide maxConns
+// is the real backstop), and the busiest sources are the loaders worth holding onto,
+// so this should shed only a genuine flood, not normal Mirai connection parallelism.
+const maxConnsPerIP = 128
 
 // maxConns bounds the total concurrent connections across every listener. The
 // per-IP cap is defeated by a botnet spread over many source addresses, so this
