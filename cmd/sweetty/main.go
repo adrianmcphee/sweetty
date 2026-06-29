@@ -257,9 +257,9 @@ func run(configPath string) {
 		fatal("persona", err)
 	}
 	if cfg.BruteForce.Enabled {
-		tries := intOr(cfg.BruteForce.AfterTries, 8)
-		after := time.Duration(intOr(cfg.BruteForce.AfterSeconds, 120)) * time.Second
-		prob := floatOr(cfg.BruteForce.Probability, 0.25)
+		tries := intOr(cfg.BruteForce.AfterTries, 4)
+		after := time.Duration(intOr(cfg.BruteForce.AfterSeconds, 45)) * time.Second
+		prob := floatOr(cfg.BruteForce.Probability, 0.4)
 		p.SetBruteForce(persona.BruteForceConfig{Enabled: true, AfterTries: tries, After: after, Probability: prob})
 		lg.System("bruteforce: a source may be let in with the credential it tried after %d attempts and %s (p=%.2f)", tries, after, prob)
 	}

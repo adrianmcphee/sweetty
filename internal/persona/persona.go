@@ -441,13 +441,49 @@ func (p *Persona) AcceptFrom(srcIP, user, pass string) (accepted, bruteForced bo
 	if p.Accept(user, pass) {
 		return true, false
 	}
-	if p.bf == nil || !p.knownUser(user) {
+	if p.bf == nil {
+		return false, false
+	}
+	// An appliance persona ships with well-known factory default credentials, the
+	// way real IoT/edge devices do and the way Mirai-class loaders get in. For that
+	// device class, accept the known defaults outright: it is accurate for the
+	// hardware rather than a honeypot tell, and it walks a loader straight to a
+	// shell where its next stage can be captured. (Counts as a normal accept, not a
+	// brute-force one, because the device genuinely has these credentials.)
+	if p.isAppliance() && isApplianceDefaultCred(user, pass) {
+		return true, false
+	}
+	if !p.knownUser(user) {
 		return false, false
 	}
 	if p.bf.consider(srcIP, user, pass) {
 		return true, true
 	}
 	return false, false
+}
+
+// isAppliance reports whether this persona impersonates an IoT/edge device (the
+// legacy profile, an ARM appliance) rather than a server.
+func (p *Persona) isAppliance() bool { return p.Profile == "legacy" }
+
+// applianceRootDefaults are factory default root passwords real IoT/edge devices
+// ship with, the corpus Mirai-class loaders spray. Accepting these on an appliance
+// persona is accurate for the hardware, not a tell.
+var applianceRootDefaults = map[string]bool{
+	"root": true, "admin": true, "password": true, "pass": true, "default": true,
+	"1234": true, "12345": true, "123456": true, "1111": true, "0000": true,
+	"888888": true, "666666": true, "54321": true, "vizxv": true, "xc3511": true,
+	"xmhdipc": true, "juantech": true, "system": true, "realtek": true,
+	"klv123": true, "service": true, "supervisor": true, "guest": true,
+	"7ujMko0vizxv": true, "7ujMko0admin": true, "ikwb": true, "dreambox": true,
+	"meinsm": true, "hi3518": true, "anko": true, "zlxx.": true,
+}
+
+// isApplianceDefaultCred reports whether user/pass is a known factory default for
+// the appliance persona's root account. Restricted to root, the account that
+// exists on the device, so an accepted login stays coherent with /etc/passwd.
+func isApplianceDefaultCred(user, pass string) bool {
+	return user == "root" && applianceRootDefaults[pass]
 }
 
 // makeHostnameFromRole builds a believable per-instance hostname. It draws from
