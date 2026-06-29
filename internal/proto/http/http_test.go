@@ -163,6 +163,20 @@ func TestTomcatRoutes(t *testing.T) {
 	}
 }
 
+// TestTomcatHomeSingleVersionHeading guards against the default page rendering the
+// version twice (the real root page shows it once, in #asf-box, with nav links in
+// #navigation). Two identical stacked headings is a visible bug and a fidelity tell.
+func TestTomcatHomeSingleVersionHeading(t *testing.T) {
+	pr := New(testPersona(), "tomcat").(*Protocol)
+	resp, _ := pr.respond(nil, "GET", "/", "")
+	if n := strings.Count(resp, "<h1>Apache Tomcat/"); n != 1 {
+		t.Fatalf("tomcat home should have exactly one version <h1>, got %d", n)
+	}
+	if !strings.Contains(resp, `id="navigation"`) || !strings.Contains(resp, "Find Help") {
+		t.Errorf("tomcat home should carry the real navigation links, not a duplicate heading")
+	}
+}
+
 func TestNginxRoutes(t *testing.T) {
 	pr := New(testPersona(), "nginx-static").(*Protocol)
 	resp, _ := pr.respond(nil, "GET", "/missing", "")

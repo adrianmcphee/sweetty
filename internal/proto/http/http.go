@@ -755,18 +755,22 @@ func tomcatHome(p *persona.Persona) string {
 </head>
 <body>
 <div id="wrapper">
-<div id="navigation" class="curved"><h1>Apache Tomcat/%s</h1></div>
+<div id="navigation" class="curved">
+<span id="nav-home"><a href="https://tomcat.apache.org/">Home</a></span>
+<span id="nav-hosts"><a href="https://tomcat.apache.org/whichversion.html">Documentation</a><a href="https://tomcat.apache.org/configuration.html">Configuration</a><a href="https://tomcat.apache.org/examples.html">Examples</a><a href="https://wiki.apache.org/tomcat/FrontPage">Wiki</a><a href="https://tomcat.apache.org/lists.html">Mailing Lists</a></span>
+<span id="nav-help"><a href="https://tomcat.apache.org/findhelp.html">Find Help</a></span>
+</div>
 <div id="asf-box"><h1>Apache Tomcat/%s</h1></div>
 <div id="upgrade"><p>If you're seeing this, you've successfully installed Tomcat. Congratulations!</p></div>
 <div id="actions">
+<a href="/manager/status">Server Status</a>
 <a href="/manager/html">Manager App</a>
 <a href="/host-manager/html">Host Manager</a>
-<a href="/docs/">Server Status</a>
 </div>
 </div>
 </body>
 </html>
-`, p.TomcatVer, p.TomcatVer, p.TomcatVer)
+`, p.TomcatVer, p.TomcatVer)
 }
 
 func tomcat401() string {
