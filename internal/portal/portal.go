@@ -30,7 +30,11 @@ type Portal struct {
 	geo      *geo.Resolver
 	consoles map[string]*consoleEntry
 	sseGate  chan struct{} // bounds concurrent SSE subscribers
+	version  string        // build version, shown in the console
 }
+
+// SetVersion records the build version string for display in the console.
+func (p *Portal) SetVersion(v string) { p.version = v }
 
 // New builds a Portal from the loaded config and the shared event logger. It does
 // not bind a port; call Start for that. When the config names a country database,

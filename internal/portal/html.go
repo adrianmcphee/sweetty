@@ -198,6 +198,7 @@ nav{flex:1;overflow-y:auto;padding:4px 10px 10px}
 <div><div class="tt" id="view_title">Live feed</div><div class="ts" id="view_sub">streaming events as they arrive</div></div>
 <div class="sp"></div>
 <button class="sndbtn" id="sndbtn" data-icon="soundoff" title="Sound alerts off"></button>
+<span class="clock" id="build_ver" title="build version"></span>
 <span class="clock" id="clock"></span>
 <span class="conn" id="conn"><i></i><span id="conn_t">live</span></span>
 </header>
@@ -207,7 +208,7 @@ nav{flex:1;overflow-y:auto;padding:4px 10px 10px}
 <div class="cards">
 <div class="card statcard"><div class="top"><span class="ico t-blue" data-icon="sessions"></span><span class="lbl">Sessions today</span></div><div class="num" id="s_sessions">0</div></div>
 <div class="card statcard"><div class="top"><span class="ico t-green" data-icon="ips"></span><span class="lbl">Unique sources</span></div><div class="num" id="s_ips">0</div></div>
-<div class="card statcard"><div class="top"><span class="ico t-red" data-icon="downloads"></span><span class="lbl">Download attempts</span></div><div class="num" id="s_dl">0</div></div>
+<div class="card statcard"><div class="top"><span class="ico t-red" data-icon="downloads"></span><span class="lbl">Payload pulls</span></div><div class="num" id="s_dl">0</div></div>
 <div class="card statcard click" id="bait_card"><div class="top"><span class="ico t-teal" data-icon="bait"></span><span class="lbl">90s JT Reveals</span></div><div class="num" id="s_ht">0</div></div>
 <div class="card statcard click" id="scan_card"><div class="top"><span class="ico t-red" data-icon="scan"></span><span class="lbl">Port scans</span></div><div class="num" id="s_scans">0</div></div>
 </div>
@@ -487,6 +488,7 @@ setNum('r_attempts',(t.credentials||0)+(t.http_requests||0)+(t.exec||0)+(t.downl
 var td=overview.today||{};
 setNum('s_sessions',td.sessions||0);setNum('s_ips',td.sources||0);setNum('s_dl',td.downloads||0);
 setNum('s_ht',td.bait||0);setNum('s_scans',td.port_scans||0);setNum('nav_ht',td.bait||0);
+var bv=document.getElementById('build_ver');if(bv&&overview.version)bv.textContent=overview.version;
 if(curView==='sources')renderSources();
 if(curView==='recon')renderRecon();
 }
@@ -698,7 +700,7 @@ var suppressNotify=false,sseStarted=false,suppressT=0;
 // that drives the Sources and Recon views and the port-scan stat card.
 var overview=null,overviewT=0;
 var NOTABLE={DOWNLOAD_ATTEMPT:1,EXEC_ATTEMPT:1,HONEYTOKEN:1};
-var LABELS={DOWNLOAD_ATTEMPT:'Download attempt',EXEC_ATTEMPT:'Exec attempt',HONEYTOKEN:'90s JT Reveal'};
+var LABELS={DOWNLOAD_ATTEMPT:'Payload pull',EXEC_ATTEMPT:'Exec attempt',HONEYTOKEN:'90s JT Reveal'};
 function labelOf(ev){return LABELS[ev]||ev;}
 
 // flashColor turns an event colour into the translucent tint a new row briefly

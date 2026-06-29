@@ -223,6 +223,7 @@ func (p *Portal) overview(c *gin.Context) {
 		"sources":     topSources(order, bySrc),
 		"geo_active":  p.geo.Loaded() > 0,
 		"asn_active":  p.geo.AsnLoaded() > 0,
+		"version":     p.version,
 	})
 }
 

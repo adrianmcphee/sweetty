@@ -312,6 +312,7 @@ func run(configPath string) {
 	}
 
 	pt := portal.New(cfg, lg)
+	pt.SetVersion(version)
 	go func() {
 		if err := pt.Start(); err != nil {
 			// The portal is observability, not the core sensor, so a bind failure is
