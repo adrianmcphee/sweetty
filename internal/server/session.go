@@ -176,8 +176,22 @@ func (s *Session) ReadLine() (string, bool) {
 		if err != nil {
 			return util.TrimCRLF(b.String()), false
 		}
+		if c == '\n' {
+			return util.TrimCRLF(b.String()), true
+		}
+		if c == '\r' {
+			// A telnet client ends a line with CR LF, CR NUL, or a bare CR. Without
+			// this, only CR LF terminated, so a real terminal's Enter (which can send
+			// CR or CR NUL) left the line unterminated and the CR echoed back as ^M.
+			// HTTP uses CR LF, so it is unaffected. Consume a paired LF/NUL so it does
+			// not open a phantom next line.
+			if nb, perr := s.reader.Peek(1); perr == nil && (nb[0] == '\n' || nb[0] == 0) {
+				_, _ = s.reader.ReadByte()
+			}
+			return util.TrimCRLF(b.String()), true
+		}
 		b.WriteByte(c)
-		if c == '\n' || b.Len() >= maxLineBytes {
+		if b.Len() >= maxLineBytes {
 			return util.TrimCRLF(b.String()), true
 		}
 	}
