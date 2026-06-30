@@ -659,6 +659,13 @@ func (sh *Shell) runCommand(args []string, stdin string) (string, int) {
 		return sh.cmdDpkg(args), 0
 	case "sleep", "true", ":", "clear", "kill", "killall", "sync", "reset":
 		return "", 0
+	case "chpasswd", "useradd", "usermod", "userdel", "adduser", "groupadd", "groupdel":
+		// Account-management and persistence commands a loader runs after break-in
+		// (chpasswd to change root's password, useradd to plant an account). They
+		// report the silent success their real counterparts give, so the loader
+		// believes it persisted; nothing changes (the overlay is per-session and the
+		// real account database is never touched).
+		return "", 0
 	case "enable", "system", "shell", "linuxshell":
 		// Mirai-class loaders fire these "menu escape" tokens the instant they log in,
 		// to break out of a restricted IoT CLI into a raw shell. On the appliance persona

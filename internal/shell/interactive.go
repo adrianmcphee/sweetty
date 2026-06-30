@@ -111,7 +111,8 @@ func lootImageBytes(abs string) []byte {
 func isInteractive(name string) bool {
 	switch name {
 	case "top", "htop", "find", "wget", "curl", "vi", "vim", "vim.basic", "nano",
-		"crontab", "passwd", "ssh", "scp", "sftp", "gcc", "cc", "g++", "make",
+		"crontab", "passwd", "su", "tftp", "ftpget", "ftpput",
+		"ssh", "scp", "sftp", "gcc", "cc", "g++", "make",
 		"apt", "apt-get", "aptitude", "python", "python2", "python3", "perl",
 		"ruby", "sh", "bash", "openssl", "nc", "ncat", "telnet", "mysql",
 		"tcpdump", "strace", "ltrace", "tar", "rsync", "pip", "pip3",
@@ -136,6 +137,12 @@ func (sh *Shell) runInteractive(args []string) int {
 		return sh.iSSH(args)
 	case "scp", "sftp":
 		return sh.iScp(args)
+	case "tftp":
+		return sh.iTftp(args)
+	case "ftpget", "ftpput":
+		return sh.iFtp(args)
+	case "su":
+		return sh.iSu(args)
 	case "sh", "bash":
 		return sh.iShExec(args)
 	case "python", "python2", "python3", "perl", "ruby":
@@ -451,6 +458,52 @@ func (sh *Shell) iInterp(args []string) int {
 	sh.pause(2 * time.Second)
 	sh.s.Writeln(args[0] + ": Segmentation fault (core dumped)")
 	return 139
+}
+
+// iTftp emulates the tftp client BusyBox loaders reach for as a fetch fallback when
+// wget/curl are absent. It logs the fetch as a download attempt, so the staging
+// host surfaces on the Payloads page, and reports the silent success a real `-g`
+// transfer gives, fetching nothing.
+func (sh *Shell) iTftp(args []string) int {
+	var host string
+	for _, a := range args[1:] {
+		if !strings.HasPrefix(a, "-") {
+			host = a // the host trails the flags; the last bare token wins
+		}
+	}
+	sh.s.LogDownload(strings.Join(args, " "), "", host, "")
+	sh.pause(time.Second)
+	return 0
+}
+
+// iFtp emulates ftpget/ftpput, the other BusyBox fetch verbs. ftpget HOST LOCAL
+// REMOTE pulls a stage; we log the attempt with the host and report silent success.
+func (sh *Shell) iFtp(args []string) int {
+	host := ""
+	if len(args) > 1 && !strings.HasPrefix(args[1], "-") {
+		host = args[1]
+	}
+	sh.s.LogDownload(strings.Join(args, " "), "", host, "")
+	sh.pause(time.Second)
+	return 0
+}
+
+// iSu emulates su: it prompts for a password and captures it (loaders try su with a
+// known password such as the Hajime/zyad markers), then returns to the shell as the
+// requested user. The session is already root, so this is a silent success and
+// nothing actually escalates.
+func (sh *Shell) iSu(args []string) int {
+	target := "root"
+	for i := 1; i < len(args); i++ {
+		if !strings.HasPrefix(args[i], "-") {
+			target = args[i]
+			break
+		}
+	}
+	pass, _ := sh.s.Prompt("Password: ")
+	sh.s.LogCredential(target, pass)
+	sh.pause(time.Second)
+	return 0
 }
 
 func (sh *Shell) cmdBase64(args []string, stdin string) (string, int) {

