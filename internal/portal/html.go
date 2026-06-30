@@ -627,7 +627,10 @@ for(var i=0;i<list.length;i++){
 var e=list[i];
 if(e.session)sessions[e.session]=(sessions[e.session]||0)+1;
 if(e.username||e.password)creds.push(e);
-if(e.event==='COMMAND'||e.command)cmds.push(e);
+// Only genuine shell commands: EXEC_ATTEMPT/DOWNLOAD_ATTEMPT carry a derived
+// 'command' field too (e.g. "pipe-to-bash: ...", "base64 -d: ..."), and counting
+// those here double-listed them against the Downloads section and inflated the count.
+if(e.event==='COMMAND')cmds.push(e);
 if(e.event==='DOWNLOAD_ATTEMPT')dls.push(e);
 }
 var sids=Object.keys(sessions);
