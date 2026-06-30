@@ -78,6 +78,7 @@ type sourceSignals struct {
 	lastCmdMs int64
 	minCmdGap int64
 	maxCmdGap int64
+	sawGap    bool // a gap has been measured, so minCmdGap of 0 is a real 0ms burst
 	seen      map[string]bool
 }
 
@@ -112,9 +113,13 @@ func (s *sourceSignals) observe(e event.Entry) {
 		ms := entryMs(e)
 		if s.lastCmdMs != 0 && ms != 0 {
 			if gap := ms - s.lastCmdMs; gap >= 0 {
-				if s.minCmdGap == 0 || gap < s.minCmdGap {
+				// Track the smallest gap; sawGap distinguishes an unset minimum from a
+				// real 0ms burst (two commands in the same millisecond), which is the
+				// strongest pasted-script tell and must not be clobbered.
+				if !s.sawGap || gap < s.minCmdGap {
 					s.minCmdGap = gap
 				}
+				s.sawGap = true
 				if gap > s.maxCmdGap {
 					s.maxCmdGap = gap
 				}

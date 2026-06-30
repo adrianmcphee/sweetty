@@ -149,6 +149,24 @@ func TestAnalyzeHumanPacingIsTentativeHuman(t *testing.T) {
 	}
 }
 
+// A pasted burst can land two commands in the same millisecond. That 0ms gap is
+// the strongest script tell, so it must survive a later, larger gap rather than be
+// mistaken for an unset minimum and overwritten.
+func TestAnalyzeZeroGapBurstKeepsCadenceZero(t *testing.T) {
+	const b = 1_700_000_600_000
+	c := func(off int64, cmd string) event.Entry { e := at(b, off, "COMMAND"); e.Command = cmd; return e }
+	entries := []event.Entry{
+		at(b, 0, "SESSION_START"),
+		c(1000, "a"),
+		c(1000, "b"), // same millisecond as the previous command: a 0ms gap
+		c(4000, "c"), // a later, larger gap that must not overwrite the 0
+	}
+	a := analyzeSource(entries)
+	if a.CadenceMs != 0 {
+		t.Fatalf("cadence_ms = %d, want 0 (the same-millisecond burst must survive)", a.CadenceMs)
+	}
+}
+
 // Two activity spans split by a long idle gap are two visits, and a source that
 // scanned and later came back to engage is flagged returning.
 func TestAnalyzeSegmentsVisitsAndReturning(t *testing.T) {
