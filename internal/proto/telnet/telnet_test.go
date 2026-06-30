@@ -211,6 +211,28 @@ func TestEcholoaderReconstructsDropper(t *testing.T) {
 	}
 }
 
+// TestDropperContentCaptured proves a file an attacker assembles on the box and
+// then runs is captured as a DROPPER indicator carrying its reconstructed content
+// and a sha256, the real payload when nothing was fetched over the wire.
+func TestDropperContentCaptured(t *testing.T) {
+	h, p := setup(t, "ubuntu")
+	login(t, h, p, "root")
+	// Assemble "#!/bin/sh\nexit" byte by byte with the echo-loader, then run it.
+	run(h, `echo -ne '\x23\x21\x2f\x62\x69\x6e\x2f\x73\x68\x0a\x65\x78\x69\x74' > /tmp/.x`)
+	run(h, "sh /tmp/.x")
+
+	e, ok := h.FindEvent("DROPPER")
+	if !ok {
+		t.Fatal("running an assembled file did not produce a DROPPER event")
+	}
+	if !strings.Contains(e.Data, "#!/bin/sh") {
+		t.Errorf("dropper content was not reconstructed: %q", e.Data)
+	}
+	if len(e.SHA256) != 64 {
+		t.Errorf("dropper sha256 missing or malformed: %q", e.SHA256)
+	}
+}
+
 func TestParsingShapes(t *testing.T) {
 	h, p := setup(t, "ubuntu")
 	login(t, h, p, "root")

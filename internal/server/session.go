@@ -2,6 +2,8 @@ package server
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
@@ -379,6 +381,25 @@ func (s *Session) LogCommandNote(cmd, note string) {
 	e := s.ev("COMMAND")
 	e.Command = cmd
 	e.Note = note
+	s.logger.Log(e)
+}
+
+// LogDropper records a file an attacker assembled on the box (with echo, base64,
+// or a redirect) and then executed: the reconstructed content is the actual
+// payload, the honeypot's best indicator of compromise when the loader never
+// fetched it over the wire. The full content is hashed; a capped preview is kept
+// for the dashboard.
+func (s *Session) LogDropper(filename, command string, content []byte) {
+	sum := sha256.Sum256(content)
+	preview := content
+	if len(preview) > 8192 {
+		preview = preview[:8192]
+	}
+	e := s.ev("DROPPER")
+	e.Filename = filename
+	e.Command = command
+	e.Data = string(preview)
+	e.SHA256 = hex.EncodeToString(sum[:])
 	s.logger.Log(e)
 }
 

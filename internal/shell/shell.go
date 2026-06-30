@@ -693,6 +693,11 @@ func (sh *Shell) runCommand(args []string, stdin string) (string, int) {
 			abs := sh.fs.Resolve(base)
 			if !inSystemBin(abs) {
 				if n, err := sh.fs.Stat(abs); err == nil && !n.IsDir() {
+					// The file is the reconstructed payload: capture its content as a
+					// dropper indicator, then log the exec attempt.
+					if content, rerr := sh.fs.ReadFile(abs); rerr == nil && len(content) > 0 {
+						sh.s.LogDropper(abs, strings.Join(args, " "), content)
+					}
 					sh.s.LogExec(strings.Join(args, " "), "dropped-exec")
 					return "", 0
 				}
@@ -700,6 +705,20 @@ func (sh *Shell) runCommand(args []string, stdin string) (string, int) {
 			return "-bash: " + base + ": No such file or directory\n", 127
 		}
 		return "-bash: " + base + ": command not found\n", 127
+	}
+}
+
+// captureDropper records the reconstructed content of a file an attacker built on
+// the box and is now executing, when it exists in the overlay and is not a system
+// tool stub. With nothing fetched over the wire, that content is the actual payload
+// and the best indicator the honeypot gets.
+func (sh *Shell) captureDropper(path, command string) {
+	abs := sh.fs.Resolve(path)
+	if inSystemBin(abs) {
+		return
+	}
+	if content, err := sh.fs.ReadFile(abs); err == nil && len(content) > 0 {
+		sh.s.LogDropper(abs, command, content)
 	}
 }
 

@@ -420,6 +420,9 @@ func (sh *Shell) iShExec(args []string) int {
 		}
 	}
 	if len(args) > 1 && !strings.HasPrefix(args[1], "-") {
+		// `sh dropper` runs a file the attacker assembled in place: capture its
+		// reconstructed content as a dropper indicator before logging the exec.
+		sh.captureDropper(args[1], args[0]+" "+args[1])
 		sh.s.LogExec(args[0]+" "+args[1], "")
 		sh.pause(1500 * time.Millisecond)
 		sh.s.Writeln("Killed")
