@@ -321,6 +321,61 @@ func TestOverviewCapsBusySensor(t *testing.T) {
 	}
 }
 
+// TestOverviewMarksReturningAndKind proves the per-source rollup carries the
+// analyzer's verdict and the repeat-visitor signal: a loader reads as a loader, a
+// bare scanner as a scanner, and a source that scanned then came back over an hour
+// later is two visits and flagged returning.
+func TestOverviewMarksReturningAndKind(t *testing.T) {
+	p := newTestPortal(t)
+	lines := []string{
+		// 7.7.7.7: logs in and changes root's password (a loader).
+		`{"time":"2026-06-27T10:00:00Z","event":"SESSION_START","src_ip":"7.7.7.7","ip":"7.7.7.7:1","session":"s","port":22,"protocol":"ssh"}`,
+		`{"time":"2026-06-27T10:00:01Z","event":"CREDENTIAL","src_ip":"7.7.7.7","ip":"7.7.7.7:1","session":"s","username":"root","password":"x"}`,
+		`{"time":"2026-06-27T10:00:02Z","event":"COMMAND","src_ip":"7.7.7.7","ip":"7.7.7.7:1","session":"s","command":"echo root:x|chpasswd|bash"}`,
+		// 6.6.6.6: connects and sends nothing (a scanner).
+		`{"time":"2026-06-27T10:00:00Z","event":"PORT_SCAN","src_ip":"6.6.6.6","ip":"6.6.6.6:2","port":23,"protocol":"telnet"}`,
+		// 5.5.5.5: scans, then returns 90 minutes later to log in and run a command.
+		`{"time":"2026-06-27T10:00:00Z","event":"PORT_SCAN","src_ip":"5.5.5.5","ip":"5.5.5.5:3","port":23,"protocol":"telnet"}`,
+		`{"time":"2026-06-27T11:30:00Z","event":"SESSION_START","src_ip":"5.5.5.5","ip":"5.5.5.5:4","session":"r","port":22,"protocol":"ssh"}`,
+		`{"time":"2026-06-27T11:30:01Z","event":"COMMAND","src_ip":"5.5.5.5","ip":"5.5.5.5:4","session":"r","command":"uname -a"}`,
+	}
+	if err := os.WriteFile(p.cfg.LogFile, []byte(strings.Join(lines, "\n")+"\n"), 0600); err != nil {
+		t.Fatalf("write log: %v", err)
+	}
+
+	eng := p.engine()
+	req := httptest.NewRequest(http.MethodGet, "/dashboard/overview", nil)
+	w := httptest.NewRecorder()
+	eng.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("overview: status %d", w.Code)
+	}
+	var body struct {
+		Sources []overviewSource `json:"sources"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("bad json: %v", err)
+	}
+	by := map[string]overviewSource{}
+	for _, s := range body.Sources {
+		by[s.IP] = s
+	}
+
+	if got := by["7.7.7.7"].Kind; got != kindLoader {
+		t.Errorf("7.7.7.7 kind = %q, want %q", got, kindLoader)
+	}
+	if got := by["6.6.6.6"].Kind; got != kindScanner {
+		t.Errorf("6.6.6.6 kind = %q, want %q", got, kindScanner)
+	}
+	ret := by["5.5.5.5"]
+	if ret.Visits != 2 {
+		t.Errorf("5.5.5.5 visits = %d, want 2 (split by the 90-minute gap)", ret.Visits)
+	}
+	if !ret.Returning {
+		t.Errorf("5.5.5.5 returning = false, want true (scanned, then came back)")
+	}
+}
+
 func containsInt(xs []int, v int) bool {
 	for _, x := range xs {
 		if x == v {

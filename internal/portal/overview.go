@@ -19,18 +19,22 @@ const overviewSourceCap = 300
 // whether it ever just bare-scanned, and the client strings it presented. Country
 // and scope come from the portal-plane resolver, never the honeypot process.
 type overviewSource struct {
-	IP        string   `json:"ip"`
-	Country   string   `json:"country,omitempty"`
-	ASN       uint32   `json:"asn,omitempty"`
-	Org       string   `json:"org,omitempty"`
-	Scope     string   `json:"scope"`
-	Events    int      `json:"events"`
-	Sessions  int      `json:"sessions"`
-	FirstSeen string   `json:"first_seen"`
-	LastSeen  string   `json:"last_seen"`
-	Protocols []string `json:"protocols,omitempty"`
-	Ports     []int    `json:"ports,omitempty"`
-	Scanned   bool     `json:"scanned"`
+	IP         string   `json:"ip"`
+	Country    string   `json:"country,omitempty"`
+	ASN        uint32   `json:"asn,omitempty"`
+	Org        string   `json:"org,omitempty"`
+	Scope      string   `json:"scope"`
+	Events     int      `json:"events"`
+	Sessions   int      `json:"sessions"`
+	FirstSeen  string   `json:"first_seen"`
+	LastSeen   string   `json:"last_seen"`
+	Protocols  []string `json:"protocols,omitempty"`
+	Ports      []int    `json:"ports,omitempty"`
+	Scanned    bool     `json:"scanned"`
+	Kind       string   `json:"kind,omitempty"`
+	Confidence int      `json:"confidence,omitempty"`
+	Visits     int      `json:"visits,omitempty"`
+	Returning  bool     `json:"returning,omitempty"`
 }
 
 // portStat is one listener port's exposure: how many events landed on it and how
@@ -84,6 +88,9 @@ func (p *Portal) overview(c *gin.Context) {
 	sessSeen := map[string]map[string]bool{}
 	protoSeen := map[string]map[string]bool{}
 	portSeen := map[string]map[int]bool{}
+	sigBySrc := map[string]*sourceSignals{}
+	visitLast := map[string]int64{}
+	visitCount := map[string]int{}
 
 	portStats := map[int]*portStat{}
 	uaStats := map[string]*agentStat{}
@@ -148,6 +155,27 @@ func (p *Portal) overview(c *gin.Context) {
 			protoSeen[src] = map[string]bool{}
 			portSeen[src] = map[int]bool{}
 		}
+
+		// Fold the event into this source's signals and visit counter, the same way
+		// analyzeSource does for the drawer, so the list tag matches the drawer verdict.
+		sig := sigBySrc[src]
+		first := sig == nil
+		if first {
+			sig = &sourceSignals{}
+			sigBySrc[src] = sig
+			visitCount[src] = 1
+		}
+		ms := entryMs(e)
+		if !first && ms != 0 {
+			if vl := visitLast[src]; vl != 0 && ms-vl > visitGapMs {
+				visitCount[src]++
+			}
+		}
+		if ms != 0 {
+			visitLast[src] = ms
+		}
+		sig.observe(e)
+
 		row.Events++
 		row.LastSeen = e.Time // entries are chronological, so the last write wins
 		if e.Session != "" && !sessSeen[src][e.Session] {
@@ -193,6 +221,20 @@ func (p *Portal) overview(c *gin.Context) {
 				uaSrcSeen[e.UserAgent][src] = true
 				ua.Sources++
 			}
+		}
+	}
+
+	// Tag each source with the analyzer's verdict, its visit count, and whether it
+	// is a returning visitor. The reasons are dropped here (the per-IP drawer carries
+	// them); the list needs only the headline kind.
+	for _, src := range order {
+		row := bySrc[src]
+		row.Visits = visitCount[src]
+		if sig := sigBySrc[src]; sig != nil {
+			kind, conf, _ := verdict(*sig)
+			row.Kind = kind
+			row.Confidence = conf
+			row.Returning = visitCount[src] >= 2 || (row.Scanned && (sig.commands > 0 || sig.sessions > 0))
 		}
 	}
 
