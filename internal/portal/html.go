@@ -112,6 +112,10 @@ nav{flex:1;overflow-y:auto;padding:4px 10px 10px}
 .kindcell{flex:none;width:74px}
 .kindtag{display:inline-block;font-size:10px;font-weight:600;font-family:var(--mono);padding:2px 7px;border-radius:999px;border:1px solid currentColor;letter-spacing:.02em}
 .retbadge{flex:none;color:#fbbf24;font-family:var(--mono);font-size:11px;font-weight:600;width:48px;text-align:right}
+.fsel,.fsearch{background:var(--panel2);border:1px solid var(--bd);color:var(--fg);font:inherit;font-size:12px;padding:4px 10px;border-radius:8px;outline:none}
+.fsearch{min-width:190px}
+.fsel:focus,.fsearch:focus{border-color:var(--bd2)}
+.fsearch::placeholder{color:var(--mut2)}
 .htbar{display:flex;gap:20px;padding:14px 16px;border-bottom:1px solid var(--bd);flex-wrap:wrap}
 .htbar .m{display:flex;flex-direction:column;gap:3px}
 .htbar .m b{font-size:20px;font-weight:680;font-variant-numeric:tabular-nums}
@@ -250,6 +254,8 @@ nav{flex:1;overflow-y:auto;padding:4px 10px 10px}
 <button class="fbtn" data-srcfilter="returning">Returning</button>
 <button class="fbtn" data-srcfilter="bots">Bots</button>
 <button class="fbtn" data-srcfilter="human">Human?</button>
+<select class="fsel" id="src_country"><option value="">All countries</option></select>
+<input class="fsearch" id="src_search" type="text" placeholder="search ip / country / isp" autocomplete="off">
 </div>
 <div class="scroll" id="sources"></div>
 </div>
@@ -446,12 +452,31 @@ var t=el('span','kindtag',k[0]);
 t.style.color=k[1];
 return t;
 }
-var srcFilter='all';
+var srcFilter='all',srcCountry='',srcSearch='';
 function matchSrcFilter(r){
-if(srcFilter==='returning')return !!r.returning;
-if(srcFilter==='bots')return (r.kind||'').slice(0,3)==='bot';
-if(srcFilter==='human')return r.kind==='human?';
+if(srcFilter==='returning'&&!r.returning)return false;
+if(srcFilter==='bots'&&(r.kind||'').slice(0,3)!=='bot')return false;
+if(srcFilter==='human'&&r.kind!=='human?')return false;
+if(srcCountry&&(r.country||r.scope||'')!==srcCountry)return false;
+if(srcSearch){
+var hay=((r.ip||'')+' '+(r.country||'')+' '+(r.scope||'')+' '+(r.org||'')).toLowerCase();
+if(hay.indexOf(srcSearch)<0)return false;
+}
 return true;
+}
+// populateCountryFilter fills the country dropdown from the loaded sources
+// (busiest-country first, since the list is sorted by events), preserving the
+// current selection across data refreshes.
+function optEl(v,t){var o=document.createElement('option');o.value=v;o.textContent=t;return o;}
+function populateCountryFilter(list){
+var sel=document.getElementById('src_country');
+if(!sel)return;
+var cur=sel.value,seen={},countries=[];
+for(var i=0;i<list.length;i++){var c=list[i].country||list[i].scope||'';if(c&&!seen[c]){seen[c]=true;countries.push(c);}}
+sel.textContent='';
+sel.appendChild(optEl('','All countries'));
+for(var j=0;j<countries.length;j++)sel.appendChild(optEl(countries[j],countries[j]));
+sel.value=cur;
 }
 function renderSources(){
 var box=document.getElementById('sources');
@@ -555,6 +580,7 @@ var td=overview.today||{};
 setNum('s_sessions',td.sessions||0);setNum('s_ips',td.sources||0);setNum('s_dl',td.downloads||0);
 setNum('s_ht',td.bait||0);setNum('s_scans',td.port_scans||0);setNum('nav_ht',td.bait||0);setNum('nav_pl',td.downloads||0);
 var bv=document.getElementById('build_ver');if(bv&&overview.version)bv.textContent=overview.version;
+populateCountryFilter(overview.sources||[]);
 if(curView==='sources')renderSources();
 if(curView==='recon')renderRecon();
 }
@@ -1046,6 +1072,10 @@ srcFilter=this.getAttribute('data-srcfilter');
 for(var z=0;z<srcfBtns.length;z++)srcfBtns[z].classList.toggle('active',srcfBtns[z]===this);
 renderSources();
 });
+var scSel=document.getElementById('src_country');
+if(scSel)scSel.addEventListener('change',function(){srcCountry=this.value;renderSources();});
+var scInput=document.getElementById('src_search');
+if(scInput)scInput.addEventListener('input',function(){srcSearch=this.value.toLowerCase();renderSources();});
 document.getElementById('bait_card').addEventListener('click',function(){showView('honeytokens');});
 document.getElementById('dl_card').addEventListener('click',function(){showView('payloads');});
 document.getElementById('scan_card').addEventListener('click',function(){showView('recon');});

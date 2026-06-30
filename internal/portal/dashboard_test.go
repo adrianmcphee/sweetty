@@ -243,6 +243,10 @@ func TestDashboardHasSourceFilters(t *testing.T) {
 		".filterbar{",
 		".kindtag{",
 		".retbadge{",
+		`id="src_country"`,
+		`id="src_search"`,
+		"function populateCountryFilter",
+		".fsearch{",
 	} {
 		if !strings.Contains(dashboardHTML, want) {
 			t.Errorf("dashboard page missing the Sources-filter hook %q", want)
