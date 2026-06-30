@@ -226,3 +226,26 @@ func TestDashboardScriptElementIDsResolve(t *testing.T) {
 		}
 	}
 }
+
+// TestDashboardHasSourceFilters checks the Sources view carries the repeat-visitor
+// controls: the four filter buttons, the kind-chip and returning-badge rendering,
+// and the styles that back them. It guards against a markup-vs-script drift where
+// the filter buttons exist but nothing wires or renders them.
+func TestDashboardHasSourceFilters(t *testing.T) {
+	for _, want := range []string{
+		`data-srcfilter="all"`,
+		`data-srcfilter="returning"`,
+		`data-srcfilter="bots"`,
+		`data-srcfilter="human"`,
+		"function matchSrcFilter",
+		"function kindTag",
+		"'bot:loader'",
+		".filterbar{",
+		".kindtag{",
+		".retbadge{",
+	} {
+		if !strings.Contains(dashboardHTML, want) {
+			t.Errorf("dashboard page missing the Sources-filter hook %q", want)
+		}
+	}
+}

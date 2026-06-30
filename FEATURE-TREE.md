@@ -149,6 +149,7 @@ network, executing attacker input, or writing to the host disk.
 - **Each source is read for what it is**: its events segment into visits across a 30-minute idle gap, and a conservative verdict reads loader/persistence commands, a honeypot-probe credential, or a BusyBox presence probe as a bot, a scan-only source as a scanner, varied human-paced typing with no bot tell as a tentative human, and everything else as unknown, carrying the evidence and the phases reached alongside. _internal/portal: TestAnalyzeLoaderScriptIsBotLoader, TestAnalyzeSentinelCredIsBot, TestAnalyzeBusyboxProbeIsLoader, TestAnalyzeScanOnlyIsScanner, TestAnalyzeHumanPacingIsTentativeHuman, TestAnalyzeSegmentsVisitsAndReturning_
 - **The per-IP drill-down returns that assessment alongside the raw entries**, so the drawer can show what a source is and why without a second request. _internal/portal: TestByIPReturnsAssessment_
 - **The overview rollup tags every source with its kind, visit count, and a returning flag** from the same analyzer, so the Sources list shows what each source is and which ones have come back without a per-row request. _internal/portal: TestOverviewMarksReturningAndKind_
+- **The Sources view shows each source's kind and a returning badge, and filters by them**: a coloured kind chip (loader, brute, scan, human?), a visit-count badge on repeat visitors, and All / Returning / Bots / Human? filter buttons. _internal/portal: TestDashboardHasSourceFilters_
 
 ## Configuration and secrets
 

@@ -105,6 +105,13 @@ nav{flex:1;overflow-y:auto;padding:4px 10px 10px}
 .chip{display:inline-flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--bd);border-radius:999px;padding:5px 12px;font-size:12px}
 .chip b{font-variant-numeric:tabular-nums;color:#fff}
 .chip .ck{color:var(--mut)}
+.filterbar{display:flex;gap:7px;padding:11px 16px;border-bottom:1px solid var(--bd);flex-wrap:wrap;flex:none}
+.fbtn{background:var(--panel2);border:1px solid var(--bd);color:var(--mut);font:inherit;font-size:12px;font-weight:500;padding:4px 12px;border-radius:999px;cursor:pointer}
+.fbtn:hover{color:var(--fg);border-color:var(--bd2)}
+.fbtn.active{background:var(--acc);border-color:var(--acc);color:#fff}
+.kindcell{flex:none;width:74px}
+.kindtag{display:inline-block;font-size:10px;font-weight:600;font-family:var(--mono);padding:2px 7px;border-radius:999px;border:1px solid currentColor;letter-spacing:.02em}
+.retbadge{flex:none;color:#fbbf24;font-family:var(--mono);font-size:11px;font-weight:600;width:48px;text-align:right}
 .htbar{display:flex;gap:20px;padding:14px 16px;border-bottom:1px solid var(--bd);flex-wrap:wrap}
 .htbar .m{display:flex;flex-direction:column;gap:3px}
 .htbar .m b{font-size:20px;font-weight:680;font-variant-numeric:tabular-nums}
@@ -223,6 +230,12 @@ nav{flex:1;overflow-y:auto;padding:4px 10px 10px}
 <section class="view" id="view_sources">
 <div class="panel">
 <div class="panelhead"><span data-icon="sources"></span>Sources<span class="sp" style="flex:1"></span><span class="count" id="src_count">0</span></div>
+<div class="filterbar">
+<button class="fbtn active" data-srcfilter="all">All</button>
+<button class="fbtn" data-srcfilter="returning">Returning</button>
+<button class="fbtn" data-srcfilter="bots">Bots</button>
+<button class="fbtn" data-srcfilter="human">Human?</button>
+</div>
 <div class="scroll" id="sources"></div>
 </div>
 </section>
@@ -403,19 +416,46 @@ if(name==='honeytokens')loadHoneytokens();
 // Sources and Recon are driven by the server-side /dashboard/overview rollup, so
 // they show the complete picture (every source, geo-resolved) rather than only the
 // last few hundred streamed events the feed holds.
+// KINDS maps a source's assessed kind to a short label and colour for its row
+// chip. A kind with no entry (unknown) shows no chip.
+var KINDS={
+'bot:loader':['loader','#f87171'],
+'bot:bruteforce':['brute','#fb923c'],
+'scanner':['scan','#60a5fa'],
+'human?':['human?','#4ade80']
+};
+function kindTag(kind){
+var k=KINDS[kind];
+if(!k)return null;
+var t=el('span','kindtag',k[0]);
+t.style.color=k[1];
+return t;
+}
+var srcFilter='all';
+function matchSrcFilter(r){
+if(srcFilter==='returning')return !!r.returning;
+if(srcFilter==='bots')return (r.kind||'').slice(0,3)==='bot';
+if(srcFilter==='human')return r.kind==='human?';
+return true;
+}
 function renderSources(){
 var box=document.getElementById('sources');
 box.textContent='';
 var list=(overview&&overview.sources)||[];
 setNum('src_count',(overview&&overview.totals&&overview.totals.sources)||list.length);
-if(!list.length){box.appendChild(el('div','empty','No sources yet.'));return;}
-for(var n=0;n<list.length;n++)box.appendChild(srcRow(list[n]));
+var shown=0;
+for(var n=0;n<list.length;n++){
+if(!matchSrcFilter(list[n]))continue;
+box.appendChild(srcRow(list[n]));shown++;
+}
+if(!shown)box.appendChild(el('div','empty',list.length?'No sources match this filter.':'No sources yet.'));
 }
 function srcRow(r){
 var div=el('div','row');
 div.appendChild(el('span','ip',r.ip));
 var g=el('span','geotag');g.appendChild(el('span','tag',r.country||r.scope||'?'));div.appendChild(g);
 var isp=el('span','isp');if(r.org){isp.textContent=r.org;if(r.asn)isp.title='AS'+r.asn+' · '+r.org;}else if(r.asn){isp.textContent='AS'+r.asn;}div.appendChild(isp);
+var kc=el('span','kindcell');var kt=kindTag(r.kind);if(kt){if(r.confidence)kt.title=r.confidence+'% confidence';kc.appendChild(kt);}div.appendChild(kc);
 var c=el('span','badge');c.style.width='64px';
 var cd=el('span','bd');cd.style.background=r.scanned?'#f87171':var_acc;c.appendChild(cd);
 c.appendChild(el('span','bn',(r.events||0)+' ev'));
@@ -424,6 +464,7 @@ var det=(r.protocols||[]).join(', ');
 if(r.ports&&r.ports.length)det+=(det?'   ':'')+r.ports.map(function(x){return ':'+x;}).join(' ');
 if(r.scanned)det+='   · scanned';
 div.appendChild(el('span','msg',det));
+var rb=el('span','retbadge');if(r.returning){rb.textContent='↩'+(r.visits||2);rb.title=(r.visits||2)+' visits';}div.appendChild(rb);
 div.appendChild(el('span','t',hms(r.last_seen)));
 div.addEventListener('click',function(){openIP(r.ip);});
 return div;
@@ -922,6 +963,12 @@ es.onerror=function(){setConn(false);};
 
 var navs=document.querySelectorAll('.navitem[data-view]');
 for(var i=0;i<navs.length;i++)navs[i].addEventListener('click',function(){showView(this.getAttribute('data-view'));});
+var srcfBtns=document.querySelectorAll('[data-srcfilter]');
+for(var sf=0;sf<srcfBtns.length;sf++)srcfBtns[sf].addEventListener('click',function(){
+srcFilter=this.getAttribute('data-srcfilter');
+for(var z=0;z<srcfBtns.length;z++)srcfBtns[z].classList.toggle('active',srcfBtns[z]===this);
+renderSources();
+});
 document.getElementById('bait_card').addEventListener('click',function(){showView('honeytokens');});
 document.getElementById('dl_card').addEventListener('click',function(){showView('payloads');});
 document.getElementById('scan_card').addEventListener('click',function(){showView('recon');});
