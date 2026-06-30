@@ -283,7 +283,7 @@ func phaseOf(e event.Entry) string {
 			return phaseExploit
 		}
 		return phaseAccess
-	case "EXEC_ATTEMPT", "DOWNLOAD_ATTEMPT", "HONEYTOKEN":
+	case "EXEC_ATTEMPT", "DOWNLOAD_ATTEMPT", "DROPPER", "HONEYTOKEN":
 		return phaseExploit
 	}
 	return ""

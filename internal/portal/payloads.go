@@ -14,16 +14,25 @@ import (
 // they reached for. Country, scope, and operator come from the portal-plane
 // resolver, never from the honeypot process.
 type payloadSource struct {
-	IP        string   `json:"ip"`
-	Country   string   `json:"country,omitempty"`
-	ASN       uint32   `json:"asn,omitempty"`
-	Org       string   `json:"org,omitempty"`
-	Scope     string   `json:"scope"`
-	Count     int      `json:"count"`
-	FirstSeen string   `json:"first_seen"`
-	LastSeen  string   `json:"last_seen"`
-	Sessions  []string `json:"sessions"`
-	URLs      []string `json:"urls"`
+	IP        string       `json:"ip"`
+	Country   string       `json:"country,omitempty"`
+	ASN       uint32       `json:"asn,omitempty"`
+	Org       string       `json:"org,omitempty"`
+	Scope     string       `json:"scope"`
+	Count     int          `json:"count"`
+	FirstSeen string       `json:"first_seen"`
+	LastSeen  string       `json:"last_seen"`
+	Sessions  []string     `json:"sessions"`
+	URLs      []string     `json:"urls"`
+	Droppers  []droppedRef `json:"droppers,omitempty"`
+}
+
+// droppedRef is one file an attacker assembled in place and ran: the honeypot's
+// payload indicator when nothing was fetched over the wire. The sha256 is the
+// stable identifier; the filename is where they built it.
+type droppedRef struct {
+	Filename string `json:"filename"`
+	SHA256   string `json:"sha256"`
 }
 
 // payloads aggregates every DOWNLOAD_ATTEMPT — an attacker's faked wget/curl/tftp
@@ -32,8 +41,11 @@ type payloadSource struct {
 // compromise (the malware staging host and, often, the C2), so this is the page an
 // operator reads to see who is fetching what, and hands to a threat-intel platform.
 func (p *Portal) payloads(c *gin.Context) {
+	// Both an over-the-wire fetch (DOWNLOAD_ATTEMPT) and an in-place dropper
+	// (DROPPER) are payload deliveries; this page rolls up who delivered what by
+	// either route, since the loaders on a given sensor may favour one or the other.
 	entries, err := p.readEntries(func(e event.Entry) bool {
-		return e.Event == "DOWNLOAD_ATTEMPT"
+		return e.Event == "DOWNLOAD_ATTEMPT" || e.Event == "DROPPER"
 	})
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"sources": []payloadSource{}, "total": 0, "by_url": gin.H{}})
@@ -43,12 +55,14 @@ func (p *Portal) payloads(c *gin.Context) {
 	bySrc := map[string]*payloadSource{}
 	sessionSeen := map[string]map[string]bool{}
 	urlSeen := map[string]map[string]bool{}
+	dropSeen := map[string]map[string]bool{}
 	byURL := map[string]int{}
+	bySha := map[string]int{}
 	order := []string{}
+	var dropperTotal int
 
 	for _, e := range entries {
 		src := srcOf(e)
-		url := payloadURL(e)
 		row := bySrc[src]
 		if row == nil {
 			loc := p.geo.Locate(src)
@@ -63,6 +77,7 @@ func (p *Portal) payloads(c *gin.Context) {
 			bySrc[src] = row
 			sessionSeen[src] = map[string]bool{}
 			urlSeen[src] = map[string]bool{}
+			dropSeen[src] = map[string]bool{}
 			order = append(order, src)
 		}
 		row.Count++
@@ -71,6 +86,20 @@ func (p *Portal) payloads(c *gin.Context) {
 			sessionSeen[src][e.Session] = true
 			row.Sessions = append(row.Sessions, e.Session)
 		}
+		if e.Event == "DROPPER" {
+			dropperTotal++
+			key := e.SHA256
+			if key == "" {
+				key = e.Filename
+			}
+			bySha[key]++
+			if !dropSeen[src][key] {
+				dropSeen[src][key] = true
+				row.Droppers = append(row.Droppers, droppedRef{Filename: e.Filename, SHA256: e.SHA256})
+			}
+			continue
+		}
+		url := payloadURL(e)
 		if !urlSeen[src][url] {
 			urlSeen[src][url] = true
 			row.URLs = append(row.URLs, url)
@@ -92,11 +121,13 @@ func (p *Portal) payloads(c *gin.Context) {
 	})
 
 	c.JSON(http.StatusOK, gin.H{
-		"sources":     sources,
-		"total":       len(entries),
-		"unique_srcs": len(order),
-		"by_url":      byURL,
-		"geo_active":  p.geo.Loaded() > 0,
+		"sources":       sources,
+		"total":         len(entries),
+		"unique_srcs":   len(order),
+		"by_url":        byURL,
+		"by_sha":        bySha,
+		"dropper_total": dropperTotal,
+		"geo_active":    p.geo.Loaded() > 0,
 	})
 }
 

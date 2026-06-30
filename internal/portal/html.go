@@ -641,8 +641,9 @@ var srcs=d.sources||[];
 setNum('plv_count',srcs.length);
 var byUrl=d.by_url||{};
 var bar=el('div','htbar');
-bar.appendChild(metric(d.total||0,'pulls'));
+bar.appendChild(metric(d.total||0,'payloads'));
 bar.appendChild(metric(d.unique_srcs||0,'sources'));
+bar.appendChild(metric(d.dropper_total||0,'droppers'));
 bar.appendChild(metric(Object.keys(byUrl).length,'distinct urls'));
 var geo=el('div','m');geo.appendChild(el('b',null,d.geo_active?'on':'off'));geo.appendChild(el('span',null,'country db'));
 bar.appendChild(geo);
@@ -658,7 +659,7 @@ chips.appendChild(ch);
 }
 box.appendChild(chips);
 }
-if(!srcs.length){box.appendChild(el('div','empty','No payload pulls yet. They land here when an attacker runs wget/curl/tftp to fetch a second-stage binary.'));return;}
+if(!srcs.length){box.appendChild(el('div','empty','No payloads yet. They land here when an attacker fetches a second stage over the wire (wget/curl/tftp), or assembles and runs one in place (the echo-loader dropper).'));return;}
 for(var j=0;j<srcs.length;j++)box.appendChild(plRow(srcs[j]));
 }
 function plRow(s){
@@ -667,8 +668,10 @@ div.appendChild(el('span','hc','x'+s.count));
 div.appendChild(el('span','hip',s.ip));
 var g=el('span','geotag');g.appendChild(el('span','tag',s.country||s.scope||'?'));if(s.org)g.appendChild(el('span','tag',s.org));
 div.appendChild(g);
-var when=hms(s.last_seen),u=(s.urls||[]).join('   ');
-div.appendChild(el('span','htk',u+(when?'   '+when:'')));
+var parts=(s.urls||[]).slice(),drops=s.droppers||[];
+for(var i=0;i<drops.length;i++)parts.push('dropper '+(drops[i].filename||'')+(drops[i].sha256?' '+drops[i].sha256.slice(0,12):''));
+var when=hms(s.last_seen);
+div.appendChild(el('span','htk',parts.join('   ')+(when?'   '+when:'')));
 div.addEventListener('click',function(){openIP(s.ip);});
 return div;
 }

@@ -100,3 +100,58 @@ func TestPayloadsAggregatesWhoPulledWhat(t *testing.T) {
 		t.Fatalf("missing a source: %+v", body.Sources)
 	}
 }
+
+// TestPayloadsIncludesInlineDroppers proves a payload assembled in place (a DROPPER
+// event) appears on the payloads page alongside over-the-wire fetches, carrying its
+// filename and sha256 and counted in dropper_total, so the page is meaningful on a
+// sensor whose loaders deliver inline instead of via wget/curl.
+func TestPayloadsIncludesInlineDroppers(t *testing.T) {
+	p := newTestPortal(t)
+	lines := []string{
+		`{"time":"2026-06-27T10:00:00Z","event":"DOWNLOAD_ATTEMPT","src_ip":"8.8.8.8","ip":"8.8.8.8:1","session":"s1","url":"http://evil/a.sh"}`,
+		`{"time":"2026-06-27T10:01:00Z","event":"DROPPER","src_ip":"9.9.9.9","ip":"9.9.9.9:2","session":"s2","filename":"/tmp/.x","sha256":"abc123","data":"#!/bin/sh"}`,
+		`{"time":"2026-06-27T10:02:00Z","event":"COMMAND","src_ip":"9.9.9.9","ip":"9.9.9.9:2","session":"s2","command":"uname -a"}`,
+	}
+	if err := os.WriteFile(p.cfg.LogFile, []byte(strings.Join(lines, "\n")+"\n"), 0600); err != nil {
+		t.Fatalf("write log: %v", err)
+	}
+	eng := p.engine()
+	req := httptest.NewRequest(http.MethodGet, "/dashboard/payloads", nil)
+	w := httptest.NewRecorder()
+	eng.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d", w.Code)
+	}
+	var body struct {
+		Total        int `json:"total"`
+		DropperTotal int `json:"dropper_total"`
+		Sources      []struct {
+			IP       string `json:"ip"`
+			Droppers []struct {
+				Filename string `json:"filename"`
+				SHA256   string `json:"sha256"`
+			} `json:"droppers"`
+		} `json:"sources"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("bad json: %v", err)
+	}
+	if body.Total != 2 {
+		t.Fatalf("total = %d, want 2 (the fetch and the dropper, not the command)", body.Total)
+	}
+	if body.DropperTotal != 1 {
+		t.Fatalf("dropper_total = %d, want 1", body.DropperTotal)
+	}
+	var found bool
+	for _, s := range body.Sources {
+		if s.IP == "9.9.9.9" {
+			if len(s.Droppers) != 1 || s.Droppers[0].Filename != "/tmp/.x" || s.Droppers[0].SHA256 != "abc123" {
+				t.Errorf("9.9.9.9 droppers = %+v, want /tmp/.x abc123", s.Droppers)
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the dropper source is missing from the page: %+v", body.Sources)
+	}
+}
