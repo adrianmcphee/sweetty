@@ -165,10 +165,12 @@ The portal binds **loopback** on a fixed port (`portal_port`, default `8888`), s
 Through the tunnel you get:
 
 - A **live feed** of events streamed over Server-Sent Events, colour-coded by type, with stat cards for sessions, unique sources, download attempts, and bait tripped.
-- A **Sources** view ranking every host that has touched the honeypot, and a **Honeytokens** view breaking the planted-bait triggers down by source and country.
-- **Per-IP drill-down**: click any event or source to see that IP's sessions, credentials tried, commands run, download attempts, and full chronological transcript.
+- A **Sources** view ranking every host that has touched the honeypot, tagging each with an assessed kind (loader, brute-force, scanner, or a tentative human) and a returning-visitor badge, filterable to returning visitors, bots, or humans, and a **Honeytokens** view breaking the planted-bait triggers down by source and country.
+- **Per-IP drill-down**: click any event or source to see that IP's assessment first (the bot/human verdict with the evidence behind it, a phase ribbon from recon to exploit, and a timeline of its visits), then its sessions, credentials tried, commands run, download attempts, and full chronological transcript.
 - **Session replay**: where `record_dir` is set, recorded sessions get a replay link that plays the captured terminal back inline.
 - **Operator consoles**: any local admin console named in `admin_consoles` (such as the HAProxy stats page) is reverse-proxied into the sidebar and reached over the same SSH tunnel.
+
+The source assessment is computed in the portal plane from the same event log, never by reaching out. The verdict is deliberately conservative: a source stays unknown unless the evidence is clear, a bot is named by what only a bot does (loader and persistence commands, a honeypot-probe credential, a BusyBox presence probe, or a machine-fast command burst), and a human is only ever a tentative hypothesis. Every verdict carries the reasons behind it, so it is auditable rather than a black box.
 
 ### Operator consoles
 
