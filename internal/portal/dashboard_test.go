@@ -249,3 +249,24 @@ func TestDashboardHasSourceFilters(t *testing.T) {
 		}
 	}
 }
+
+// TestDashboardRendersAssessmentPanel checks the per-IP drawer wires the profile
+// into an assessment panel: the builders, the styles, and the threading of the
+// byIP response's profile into renderDetail.
+func TestDashboardRendersAssessmentPanel(t *testing.T) {
+	for _, want := range []string{
+		"function buildAssessment",
+		"function buildTimeline",
+		"function buildPhases",
+		"d.profile||null",
+		"function renderDetail(ip,list,profile",
+		"VERDICTLBL",
+		".assess{",
+		".tlbar{",
+		".ribbon{",
+	} {
+		if !strings.Contains(dashboardHTML, want) {
+			t.Errorf("dashboard page missing the assessment-panel hook %q", want)
+		}
+	}
+}

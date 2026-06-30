@@ -150,6 +150,7 @@ network, executing attacker input, or writing to the host disk.
 - **The per-IP drill-down returns that assessment alongside the raw entries**, so the drawer can show what a source is and why without a second request. _internal/portal: TestByIPReturnsAssessment_
 - **The overview rollup tags every source with its kind, visit count, and a returning flag** from the same analyzer, so the Sources list shows what each source is and which ones have come back without a per-row request. _internal/portal: TestOverviewMarksReturningAndKind_
 - **The Sources view shows each source's kind and a returning badge, and filters by them**: a coloured kind chip (loader, brute, scan, human?), a visit-count badge on repeat visitors, and All / Returning / Bots / Human? filter buttons. _internal/portal: TestDashboardHasSourceFilters_
+- **The per-IP drawer leads with an assessment panel**: the verdict and confidence, the evidence behind it, a phase ribbon (recon, brute, access, exploit), and a visit timeline, all from the byIP profile. _internal/portal: TestDashboardRendersAssessmentPanel_
 
 ## Configuration and secrets
 

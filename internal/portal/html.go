@@ -144,6 +144,21 @@ nav{flex:1;overflow-y:auto;padding:4px 10px 10px}
 .tline .tt{color:var(--mut2);flex:none;width:58px;font-family:var(--mono);font-size:11.5px}
 .tline .te{flex:none;width:120px;font-weight:600;font-size:11px;font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tline .tm{flex:1;color:#cbcbcb;word-break:break-word;font-family:var(--mono);font-size:12px}
+.assess{background:var(--panel2);border:1px solid var(--bd);border-radius:var(--r2);padding:13px 14px;margin:14px 0 4px}
+.assesshead{display:flex;align-items:center;gap:10px}
+.assesshead .verdict{font-size:14px;font-weight:680;font-family:var(--mono)}
+.assesshead .conf{font-size:11px;color:var(--mut);background:var(--elev);padding:2px 8px;border-radius:999px;font-variant-numeric:tabular-nums}
+.assesshead .retflag{font-size:11px;color:#fbbf24;font-weight:600;margin-left:auto}
+.assessmeta{font-size:11px;color:var(--mut2);margin-top:6px;font-family:var(--mono)}
+.reasons{margin-top:11px;display:flex;flex-direction:column;gap:5px}
+.reason{display:flex;gap:8px;font-size:12px;color:#cbcbcb;align-items:flex-start}
+.reason .rdot{color:var(--mut2);flex:none}
+.ribbon{display:flex;align-items:center;gap:7px;margin-top:13px;flex-wrap:wrap}
+.rstep{font-size:11px;font-weight:600;font-family:var(--mono);color:var(--mut2);text-transform:uppercase;letter-spacing:.04em}
+.rarrow{color:var(--mut2);font-size:12px}
+.tlwrap{margin-top:12px}
+.tlbar{position:relative;height:14px;background:var(--elev);border-radius:4px;overflow:hidden}
+.tlseg{position:absolute;top:0;height:100%;border-radius:3px;min-width:3px}
 .replaylink{color:var(--acc);cursor:pointer;font-weight:600;margin-left:8px}
 .replaylink:hover{text-decoration:underline}
 #replay{position:fixed;inset:0;background:rgba(0,0,0,.62);display:none;align-items:center;justify-content:center;z-index:80}
@@ -644,7 +659,7 @@ if(!ip)return;
 detailIP=ip;
 fetch('/dashboard/ip/'+encodeURIComponent(ip),{credentials:'same-origin'})
 .then(function(r){return r.json();})
-.then(function(d){renderDetail(ip,d.entries||[]);})
+.then(function(d){renderDetail(ip,d.entries||[],d.profile||null);})
 .catch(function(){});
 }
 // scheduleDetailRefresh coalesces a burst of events from the open IP into one
@@ -655,14 +670,76 @@ if(!detailIP)return;
 var ip=detailIP,keep=detailBody.scrollTop;
 fetch('/dashboard/ip/'+encodeURIComponent(ip),{credentials:'same-origin'})
 .then(function(r){return r.json();})
-.then(function(d){if(detailIP===ip){renderDetail(ip,d.entries||[],true);detailBody.scrollTop=keep;}})
+.then(function(d){if(detailIP===ip){renderDetail(ip,d.entries||[],d.profile||null,true);detailBody.scrollTop=keep;}})
 .catch(function(){});
 }
 function sect(title){detailBody.appendChild(el('div','sect',title));}
-function renderDetail(ip,list,preserve){
+
+// --- source assessment (drawer) -------------------------------------------
+// The byIP response carries a profile: the bot/human verdict, the evidence, the
+// phases reached, and the visit breakdown. These builders render it at the top of
+// the drawer so an operator sees what a source is before reading its transcript.
+var VERDICTLBL={'bot:loader':'Bot · loader','bot:bruteforce':'Bot · brute-force','scanner':'Scanner','human?':'Human?','unknown':'Unknown'};
+var PHASECOL={recon:'#71717a',bruteforce:'#f59e0b',access:'#3b82f6',exploit:'#ef4444'};
+function phaseColor(p){return PHASECOL[p]||'#52525b';}
+function buildPhases(profile){
+var reached={};(profile.phases||[]).forEach(function(p){reached[p]=true;});
+var ph=el('div','ribbon');
+var order=[['recon','Recon'],['bruteforce','Brute'],['access','Access'],['exploit','Exploit']];
+for(var i=0;i<order.length;i++){
+var step=el('span','rstep',order[i][1]);
+if(reached[order[i][0]])step.style.color=phaseColor(order[i][0]);
+ph.appendChild(step);
+if(i<order.length-1)ph.appendChild(el('span','rarrow','›'));
+}
+return ph;
+}
+function buildTimeline(profile){
+var wrap=el('div','tlwrap'),visits=profile.visits||[];
+var t0=Date.parse(visits[0].start),t1=Date.parse(visits[visits.length-1].end);
+var span=Math.max(t1-t0,1),bar=el('div','tlbar');
+for(var i=0;i<visits.length;i++){
+var v=visits[i],s=Date.parse(v.start),e=Date.parse(v.end);
+var seg=el('span','tlseg');
+seg.style.left=((s-t0)/span*100)+'%';
+seg.style.width=Math.max((e-s)/span*100,1.5)+'%';
+seg.style.background=phaseColor(v.phase);
+seg.title='visit '+(i+1)+': '+hms(v.start)+' to '+hms(v.end)+'  ·  '+v.events+' events  ·  '+(v.phase||'')+(v.accepted?'  ·  shell':'');
+bar.appendChild(seg);
+}
+wrap.appendChild(bar);
+return wrap;
+}
+function buildAssessment(profile){
+var box=el('div','assess'),head=el('div','assesshead');
+var verdict=el('span','verdict',VERDICTLBL[profile.kind]||profile.kind);
+var kk=KINDS[profile.kind];if(kk)verdict.style.color=kk[1];
+head.appendChild(verdict);
+if(profile.confidence)head.appendChild(el('span','conf',profile.confidence+'%'));
+if(profile.returning)head.appendChild(el('span','retflag','↩ returning'));
+box.appendChild(head);
+var meta=[];
+if(profile.cadence_ms)meta.push(profile.cadence_ms+'ms between commands');
+if((profile.visits||[]).length)meta.push(profile.visits.length+' visit'+(profile.visits.length>1?'s':''));
+if(meta.length)box.appendChild(el('div','assessmeta',meta.join('  ·  ')));
+var reasons=profile.reasons||[];
+if(reasons.length){
+var rl=el('div','reasons');
+for(var i=0;i<reasons.length;i++){
+var rr=el('div','reason');rr.appendChild(el('span','rdot','•'));rr.appendChild(el('span',null,reasons[i]));rl.appendChild(rr);
+}
+box.appendChild(rl);
+}
+box.appendChild(buildPhases(profile));
+if((profile.visits||[]).length)box.appendChild(buildTimeline(profile));
+return box;
+}
+
+function renderDetail(ip,list,profile,preserve){
 document.getElementById('detail_ip').textContent=ip;
 document.getElementById('detail_sub').textContent=list.length+' events';
 detailBody.textContent='';
+if(profile&&profile.kind)detailBody.appendChild(buildAssessment(profile));
 var sessions={},creds=[],cmds=[],dls=[];
 for(var i=0;i<list.length;i++){
 var e=list[i];
