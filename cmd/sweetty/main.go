@@ -222,7 +222,7 @@ func buildProtocol(lc config.Listener, p *persona.Persona, base *vfs.FS) server.
 		if style == "" {
 			style = "nginx-static"
 		}
-		return httpproto.New(p, style)
+		return httpproto.New(base, p, style)
 	case "https":
 		return https.New(p)
 	case "ftp":

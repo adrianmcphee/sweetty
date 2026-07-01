@@ -47,7 +47,7 @@ func headerIndex(lines []string, name string) int {
 func fetch(t *testing.T, style, request string) string {
 	t.Helper()
 	p := persona.Generate()
-	h, err := testharness.New(httpproto.New(p, style))
+	h, err := testharness.New(httpproto.New(nil, p, style))
 	if err != nil {
 		t.Fatal(err)
 	}

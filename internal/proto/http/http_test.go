@@ -33,7 +33,7 @@ func testPersona() *persona.Persona {
 }
 
 func TestNameAndClientFirst(t *testing.T) {
-	proto := New(testPersona(), "wordpress")
+	proto := New(nil, testPersona(), "wordpress")
 	if got := proto.Name(); got != "http" {
 		t.Errorf("Name() = %q, want %q", got, "http")
 	}
@@ -59,7 +59,7 @@ func TestRootResponseByStyle(t *testing.T) {
 		{"nginx-static", "HTTP/1.1 200 OK\r\n", "Server: nginx/" + p.NginxVer + "\r\n", []string{"Welcome to nginx!"}},
 	}
 	for _, c := range cases {
-		pr := New(p, c.style).(*Protocol)
+		pr := New(nil, p, c.style).(*Protocol)
 		resp, delay := pr.respond(nil, "GET", "/", "")
 		if delay != 0 {
 			t.Errorf("%s: GET / delay = %v, want 0", c.style, delay)
@@ -91,7 +91,7 @@ func TestRootResponseByStyle(t *testing.T) {
 }
 
 func TestWordPressRoutes(t *testing.T) {
-	pr := New(testPersona(), "wordpress").(*Protocol)
+	pr := New(nil, testPersona(), "wordpress").(*Protocol)
 
 	resp, delay := pr.respond(nil, "GET", "/wp-login.php", "")
 	if !strings.HasPrefix(resp, "HTTP/1.1 200") || !strings.Contains(resp, `name="log"`) {
@@ -144,7 +144,7 @@ func TestWordPressRoutes(t *testing.T) {
 }
 
 func TestTomcatRoutes(t *testing.T) {
-	pr := New(testPersona(), "tomcat").(*Protocol)
+	pr := New(nil, testPersona(), "tomcat").(*Protocol)
 	for _, path := range []string{"/manager/html", "/host-manager/html"} {
 		resp, delay := pr.respond(nil, "GET", path, "")
 		if !strings.HasPrefix(resp, "HTTP/1.1 401") {
@@ -167,7 +167,7 @@ func TestTomcatRoutes(t *testing.T) {
 // version twice (the real root page shows it once, in #asf-box, with nav links in
 // #navigation). Two identical stacked headings is a visible bug and a fidelity tell.
 func TestTomcatHomeSingleVersionHeading(t *testing.T) {
-	pr := New(testPersona(), "tomcat").(*Protocol)
+	pr := New(nil, testPersona(), "tomcat").(*Protocol)
 	resp, _ := pr.respond(nil, "GET", "/", "")
 	if n := strings.Count(resp, "<h1>Apache Tomcat/"); n != 1 {
 		t.Fatalf("tomcat home should have exactly one version <h1>, got %d", n)
@@ -178,7 +178,7 @@ func TestTomcatHomeSingleVersionHeading(t *testing.T) {
 }
 
 func TestNginxRoutes(t *testing.T) {
-	pr := New(testPersona(), "nginx-static").(*Protocol)
+	pr := New(nil, testPersona(), "nginx-static").(*Protocol)
 	resp, _ := pr.respond(nil, "GET", "/missing", "")
 	if !strings.HasPrefix(resp, "HTTP/1.1 404") || !strings.Contains(resp, "nginx/1.24.0") {
 		t.Errorf("nginx 404 should carry the version: %q", firstLine(resp))
@@ -225,7 +225,7 @@ func TestPostIsLoggedWithSHA(t *testing.T) {
 	}
 	defer lg.Close()
 
-	pr := New(testPersona(), "wordpress").(*Protocol)
+	pr := New(nil, testPersona(), "wordpress").(*Protocol)
 	pr.sleep = func(time.Duration) {} // skip the 3s login delay
 	port := startServer(t, pr, lg)
 

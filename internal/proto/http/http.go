@@ -25,6 +25,7 @@ import (
 
 	"sweetty/internal/persona"
 	"sweetty/internal/server"
+	"sweetty/internal/vfs"
 )
 
 // Per-route latencies. Real PHP login handlers and manager-app auth checks take
@@ -58,6 +59,12 @@ type Protocol struct {
 	persona *persona.Persona
 	style   string
 	sleep   func(time.Duration)
+	// fs is the base virtual filesystem, shared with telnet and ssh. It lets an
+	// HTTP RCE be routed through the same inert shell so an injected command is
+	// captured (and its C2 recorded) exactly as over SSH, executing nothing. Nil
+	// when the honeypot is built without a filesystem (some unit tests), in which
+	// case the RCE bridge is simply skipped.
+	fs *vfs.FS
 
 	// wp* track WordPress login pressure per source so the admin "gives" only
 	// after persistent credential-stuffing, never to a one-shot bot. Guarded by mu
@@ -72,11 +79,12 @@ type Protocol struct {
 // New returns an HTTP protocol bound to the given persona and style. The style
 // is one of "wordpress", "tomcat", or "nginx-static"; any other value falls back
 // to a plain static server.
-func New(p *persona.Persona, style string) server.Protocol {
+func New(base *vfs.FS, p *persona.Persona, style string) server.Protocol {
 	return &Protocol{
 		persona:        p,
 		style:          style,
 		sleep:          time.Sleep,
+		fs:             base,
 		wpTries:        make(map[string]int),
 		wpBroken:       make(map[string]bool),
 		wpAdminHits:    make(map[string]int),
@@ -321,6 +329,12 @@ func withHeader(base map[string]string, key, value string) map[string]string {
 // respond routes a request to the active style and returns the full response
 // plus the latency to apply before sending it.
 func (pr *Protocol) respond(s *server.Session, method, path, body string) (string, time.Duration) {
+	// A recognised RCE is routed through the inert shell (capturing its C2 and
+	// commands) before the per-stack responder, since these exploits target every
+	// stack, not just the one this instance advertises.
+	if resp, delay, ok := pr.tryExploit(s, method, path, body); ok {
+		return resp, delay
+	}
 	switch pr.style {
 	case "tomcat":
 		return pr.respondTomcat(method, path)

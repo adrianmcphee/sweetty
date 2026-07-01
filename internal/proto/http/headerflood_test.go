@@ -16,7 +16,7 @@ import (
 )
 
 func TestHTTPHeaderFloodIsBounded(t *testing.T) {
-	h, err := testharness.New(httpproto.New(persona.Generate(), "nginx-static"))
+	h, err := testharness.New(httpproto.New(nil, persona.Generate(), "nginx-static"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -15,7 +15,7 @@ import (
 
 func TestHTTPWordPressPersona(t *testing.T) {
 	p := persona.Generate()
-	h, err := testharness.New(httpproto.New(p, "wordpress"))
+	h, err := testharness.New(httpproto.New(nil, p, "wordpress"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func hasUA(h *testharness.Harness) bool {
 
 func TestHTTPPostIsHashed(t *testing.T) {
 	p := persona.Generate()
-	h, err := testharness.New(httpproto.New(p, "wordpress"))
+	h, err := testharness.New(httpproto.New(nil, p, "wordpress"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestHTTPPostIsHashed(t *testing.T) {
 // bytes the attacker sent, so an analyst can fingerprint a payload by hash alone.
 func TestPostShaMatchesBody(t *testing.T) {
 	p := persona.Generate()
-	h, err := testharness.New(httpproto.New(p, "wordpress"))
+	h, err := testharness.New(httpproto.New(nil, p, "wordpress"))
 	if err != nil {
 		t.Fatal(err)
 	}

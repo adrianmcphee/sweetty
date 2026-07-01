@@ -10,7 +10,7 @@ import (
 // TestWPGateLetsInPersistentGuesser checks the door opens only after enough
 // attempts from one source, and that the break-in does not leak to other sources.
 func TestWPGateLetsInPersistentGuesser(t *testing.T) {
-	pr := New(persona.Generate(), "wordpress").(*Protocol)
+	pr := New(nil, persona.Generate(), "wordpress").(*Protocol)
 	src := "203.0.113.7"
 	for i := 1; i < wpBreakInAfter; i++ {
 		if pr.wpLetIn(src) {
@@ -32,7 +32,7 @@ func TestWPGateLetsInPersistentGuesser(t *testing.T) {
 // until a source has done the work, then a successful login lands it on the
 // dashboard that carries the embedded reveal.
 func TestWPLoginRevealsOnlyAfterWork(t *testing.T) {
-	pr := New(persona.Generate(), "wordpress").(*Protocol)
+	pr := New(nil, persona.Generate(), "wordpress").(*Protocol)
 	src := "203.0.113.20"
 	body := "log=admin&pwd=password123&wp-submit=Log+In"
 
@@ -70,7 +70,7 @@ func TestWPLoginRevealsOnlyAfterWork(t *testing.T) {
 // TestWPRevealLoggedOncePerSource checks the wp-admin JT reveal is recorded as a
 // 90s JT Reveal once per source, not on every dashboard view.
 func TestWPRevealLoggedOncePerSource(t *testing.T) {
-	pr := New(persona.Generate(), "wordpress").(*Protocol)
+	pr := New(nil, persona.Generate(), "wordpress").(*Protocol)
 	if !pr.wpLogReveal("1.2.3.4") {
 		t.Fatal("first reveal for a source should log")
 	}
@@ -104,7 +104,7 @@ func TestJTArtEmbedded(t *testing.T) {
 // TestWPDeepRevealAfterLotsOfWork checks the deeper reveal replaces the first one
 // only after a lot of post-break-in wp-admin views.
 func TestWPDeepRevealAfterLotsOfWork(t *testing.T) {
-	pr := New(persona.Generate(), "wordpress").(*Protocol)
+	pr := New(nil, persona.Generate(), "wordpress").(*Protocol)
 	src := "203.0.113.40"
 	for range wpBreakInAfter {
 		pr.respondWordPress(nil, src, "POST", "/wp-login.php", "log=admin&pwd=x")

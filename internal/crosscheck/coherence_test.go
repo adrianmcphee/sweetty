@@ -63,7 +63,7 @@ func TestEveryServiceTellsOnePersonaStory(t *testing.T) {
 
 	// HTTP / WordPress on Apache: the Apache, PHP and WordPress versions all come
 	// from this one persona, and Apache carries the Ubuntu tag.
-	wp := firstResponse(t, httpproto.New(p, "wordpress"), get)
+	wp := firstResponse(t, httpproto.New(nil, p, "wordpress"), get)
 	for _, want := range []string{"Apache/" + p.ApacheVer + " (Ubuntu)", "PHP/" + p.PHPVer, "WordPress " + p.WPVer} {
 		if !strings.Contains(wp, want) {
 			t.Errorf("wordpress response missing %q (cross-service desync): %q", want, firstLine(wp))
@@ -71,12 +71,12 @@ func TestEveryServiceTellsOnePersonaStory(t *testing.T) {
 	}
 
 	// HTTP / nginx static: nginx version with the Ubuntu tag.
-	if ng := firstResponse(t, httpproto.New(p, "nginx-static"), get); !strings.Contains(ng, "Server: nginx/"+p.NginxVer+"\r\n") {
+	if ng := firstResponse(t, httpproto.New(nil, p, "nginx-static"), get); !strings.Contains(ng, "Server: nginx/"+p.NginxVer+"\r\n") {
 		t.Errorf("nginx response does not carry the bare persona nginx token %q: %q", p.NginxVer, firstLine(ng))
 	}
 
 	// HTTP / Tomcat: the body version is the persona's Tomcat.
-	if tc := firstResponse(t, httpproto.New(p, "tomcat"), get); !strings.Contains(tc, "Apache Tomcat/"+p.TomcatVer) {
+	if tc := firstResponse(t, httpproto.New(nil, p, "tomcat"), get); !strings.Contains(tc, "Apache Tomcat/"+p.TomcatVer) {
 		t.Errorf("tomcat response does not carry persona Tomcat %q", p.TomcatVer)
 	}
 
