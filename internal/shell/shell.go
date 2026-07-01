@@ -74,6 +74,7 @@ const maxExecDepth = 25
 // Run starts an interactive shell on base as user, in the given prompt style.
 func Run(s *server.Session, base *vfs.FS, p *persona.Persona, user, style string, pivot PivotResolver) {
 	sh := newShell(s, base, p, user, style, pivot)
+	defer sh.fs.Release()
 	sh.welcome()
 	sh.loop()
 }
@@ -90,6 +91,7 @@ func RunOnce(s *server.Session, base *vfs.FS, p *persona.Persona, user, style st
 		return 0
 	}
 	sh := newShell(s, base, p, user, style, pivot)
+	defer sh.fs.Release()
 	sh.s.CmdCount++
 	sh.runLine(line)
 	if sh.last < 0 {
@@ -111,6 +113,7 @@ func RunOnceCaptured(s *server.Session, base *vfs.FS, p *persona.Persona, user, 
 		return "", 0
 	}
 	sh := newShell(s, base, p, user, style, pivot)
+	defer sh.fs.Release()
 	sh.s.CmdCount++
 	out := s.CaptureOutput(func() { sh.runLine(line) })
 	if sh.last < 0 {

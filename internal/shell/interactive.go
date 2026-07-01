@@ -328,6 +328,7 @@ func (sh *Shell) iSSH(args []string) int {
 			// the goroutine stack overflows — a fatal crash that bypasses the
 			// per-shell exec-depth guard.
 			nested := newShell(sh.s, piv.FS, piv.P, "root", sh.style, nil)
+			defer nested.fs.Release()
 			nested.welcome()
 			nested.loop()
 			return 0

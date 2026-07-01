@@ -87,3 +87,29 @@ func TestNilRecorderIsSafe(t *testing.T) {
 		t.Fatalf("nil Close: %v", err)
 	}
 }
+
+// TestCastSizeIsCapped proves one session cannot write an unbounded cast file. A
+// runaway session that elicits huge output would otherwise fill the disk, at which
+// point the JSON event log itself starts dropping writes and the sensor goes blind.
+func TestCastSizeIsCapped(t *testing.T) {
+	dir := t.TempDir()
+	r, err := New(dir, "big", 80, 24)
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	chunk := make([]byte, 1<<20)
+	for range (maxCastBytes / len(chunk)) + 8 {
+		r.Write(chunk)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	fi, err := os.Stat(filepath.Join(dir, "big.cast"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Allow a small margin for the header and the truncation marker line.
+	if fi.Size() > maxCastBytes+4096 {
+		t.Fatalf("cast grew to %d bytes, past the %d cap", fi.Size(), maxCastBytes)
+	}
+}

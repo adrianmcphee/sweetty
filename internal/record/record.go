@@ -15,13 +15,23 @@ import (
 	"time"
 )
 
+// maxCastBytes caps how large a single session's cast may grow. A session that
+// elicits huge output (a large find, download theatre, expansion) would otherwise
+// write an unbounded file, and once the disk fills the event log itself starts
+// dropping writes, blinding the sensor it exists to feed. Retention and file count
+// are the deployment's job (the instance template ages casts out); this bounds the
+// one-session runaway.
+const maxCastBytes = 16 << 20
+
 // Recorder appends asciinema v2 events for one session. The zero value and a nil
 // Recorder are safe no-ops, so callers need not branch on whether recording is
 // enabled.
 type Recorder struct {
-	mu    sync.Mutex
-	f     *os.File
-	start time.Time
+	mu      sync.Mutex
+	f       *os.File
+	start   time.Time
+	written int
+	capped  bool
 }
 
 // New creates <dir>/<id>.cast and writes the v2 header. The directory is created
@@ -57,7 +67,7 @@ func (r *Recorder) Write(b []byte) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.f == nil {
+	if r.f == nil || r.capped {
 		return
 	}
 	data, err := json.Marshal(string(b))
@@ -65,7 +75,15 @@ func (r *Recorder) Write(b []byte) {
 		return
 	}
 	off := strconv.FormatFloat(time.Since(r.start).Seconds(), 'f', 6, 64)
-	r.f.WriteString("[" + off + ", \"o\", " + string(data) + "]\n")
+	line := "[" + off + ", \"o\", " + string(data) + "]\n"
+	if r.written+len(line) > maxCastBytes {
+		// One last marker so a truncated replay is self-explanatory, then stop.
+		r.f.WriteString("[" + off + ", \"o\", \"\\r\\n[recording truncated]\\r\\n\"]\n")
+		r.capped = true
+		return
+	}
+	n, _ := r.f.WriteString(line)
+	r.written += n
 }
 
 // Close flushes and closes the cast file. It is safe on a nil Recorder.

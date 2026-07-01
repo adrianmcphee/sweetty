@@ -5,6 +5,7 @@ import (
 	pathpkg "path"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -20,6 +21,32 @@ const (
 	maxOverlayFileBytes = 2 << 20 // largest single file
 	maxOverlayEntries   = 2048    // overlay nodes + tombstones, bounding entry churn
 )
+
+// maxGlobalOverlayBytes caps overlay memory across ALL live sessions. The
+// per-session cap alone is not enough: maxConns sessions each filling 8 MiB would
+// be gigabytes of attacker-held RAM, far past the memory of the small VM a sensor
+// runs on, and Go OOM is a fatal throw. This process-wide ceiling bounds the total
+// independently of connection count, well under a typical MemoryMax. A session
+// returns its bytes to the pool on Release when it ends.
+const maxGlobalOverlayBytes = 256 << 20
+
+// globalOverlayBytes is the live sum of overlay content bytes across all sessions.
+var globalOverlayBytes atomic.Int64
+
+// reserveOverlay adjusts the global counter by delta, refusing a positive delta
+// that would push the total past the process ceiling (rolled back atomically so a
+// losing race leaves the counter untouched). A non-positive delta always applies.
+func reserveOverlay(delta int) bool {
+	if delta <= 0 {
+		globalOverlayBytes.Add(int64(delta))
+		return true
+	}
+	if globalOverlayBytes.Add(int64(delta)) > maxGlobalOverlayBytes {
+		globalOverlayBytes.Add(int64(-delta))
+		return false
+	}
+	return true
+}
 
 // Session is a per-connection writable view over the shared read-only base tree.
 // Writes land in an in-memory overlay and deletions in a tombstone set; neither
@@ -157,6 +184,11 @@ func (s *Session) WriteFile(p string, content []byte) error {
 	if !isReplacement && s.entries() >= maxOverlayEntries {
 		return ErrNoSpace
 	}
+	// Reserve the delta against the process-wide ceiling too, so no number of
+	// sessions can jointly exhaust host memory even while each stays under its own cap.
+	if !reserveOverlay(len(content) - oldLen) {
+		return ErrNoSpace
+	}
 	delete(s.deleted, abs)
 	s.bytes = s.bytes - oldLen + len(content)
 	s.overlay[abs] = &Node{
@@ -212,10 +244,21 @@ func (s *Session) Remove(p string) error {
 	}
 	if prev := s.overlay[abs]; prev != nil && !prev.IsDir() {
 		s.bytes -= len(prev.content)
+		reserveOverlay(-len(prev.content)) // return the freed bytes to the process pool
 	}
 	delete(s.overlay, abs)
 	s.deleted[abs] = true
 	return nil
+}
+
+// Release returns this session's overlay bytes to the process-wide pool. Call it
+// when the session ends (the connection is done) so long-lived sensors do not leak
+// the global counter upward toward a false, permanent out-of-space. Idempotent.
+func (s *Session) Release() {
+	if s.bytes != 0 {
+		reserveOverlay(-s.bytes)
+		s.bytes = 0
+	}
 }
 
 // Exists reports whether a path resolves to something visible in this session.

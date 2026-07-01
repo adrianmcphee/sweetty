@@ -33,6 +33,12 @@ type srcAuth struct {
 	accepted map[string]struct{} // credentials that now work for this source
 }
 
+// maxBruteSources bounds the per-source attempt table. Without it a distributed
+// credential-stuffing sweep across many source IPs grows the map for the process
+// lifetime and eventually OOMs a long-lived sensor. At the cap new sources stop
+// being tracked (they simply never crack in) rather than growing memory without end.
+const maxBruteSources = 50000
+
 func credKey(user, pass string) string { return user + "\x00" + pass }
 
 // consider records an attempt from srcIP and decides whether to let the source in
@@ -43,6 +49,11 @@ func (b *bruteForce) consider(srcIP, user, pass string) bool {
 	defer b.mu.Unlock()
 	st := b.src[srcIP]
 	if st == nil {
+		if len(b.src) >= maxBruteSources {
+			// Table full: refuse to grow under a distributed sweep. An untracked source
+			// is simply never let in, which is the safe default for the trap.
+			return false
+		}
 		st = &srcAuth{accepted: map[string]struct{}{}}
 		b.src[srcIP] = st
 	}

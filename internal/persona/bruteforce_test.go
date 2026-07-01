@@ -1,6 +1,7 @@
 package persona
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -78,5 +79,22 @@ func TestAcceptFromGates(t *testing.T) {
 	// ...but a real account under the same policy is let in.
 	if ok, bf := p3.AcceptFrom("3.3.3.4", "root", "x"); !ok || !bf {
 		t.Errorf("real account not let in under the same policy: (%v,%v)", ok, bf)
+	}
+}
+
+// TestBruteForceSourceTableIsBounded proves the per-source attempt map cannot grow
+// without bound. A distributed credential-stuffing sweep across many source IPs
+// would otherwise fill the map for the process lifetime and OOM a long-lived
+// sensor. Past the cap a brand-new source is refused (never tracked) even when its
+// parameters would otherwise crack in immediately.
+func TestBruteForceSourceTableIsBounded(t *testing.T) {
+	p := Generate()
+	p.SetBruteForce(BruteForceConfig{Enabled: true, AfterTries: 1, After: 0, Probability: 1})
+	for i := range maxBruteSources {
+		ip := fmt.Sprintf("10.%d.%d.%d", i>>16&255, i>>8&255, i&255)
+		p.AcceptFrom(ip, "root", "x")
+	}
+	if ok, _ := p.AcceptFrom("203.0.113.250", "root", "x"); ok {
+		t.Fatal("a new source was let in past the source-table cap; the map is unbounded")
 	}
 }

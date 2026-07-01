@@ -142,6 +142,12 @@ func (s *Session) ReadN(n int) []byte {
 	if n <= 0 {
 		return nil
 	}
+	// Clamp at the primitive, not by convention: today's only caller bounds n first,
+	// but a future caller passing a raw attacker-declared length (a Content-Length)
+	// must not be able to force a large allocation from a header alone.
+	if n > maxReadN {
+		n = maxReadN
+	}
 	s.conn.SetReadDeadline(s.readDeadline())
 	buf := make([]byte, n)
 	read, _ := io.ReadFull(s.reader, buf)
@@ -200,6 +206,11 @@ func (s *Session) CaptureOutput(fn func()) string {
 // returned in bounded chunks the protocol disposes of quickly; no real
 // credential, command, or request line approaches this size.
 const maxLineBytes = 64 * 1024
+
+// maxReadN caps a single ReadN allocation. Well above any legitimate body an HTTP
+// caller clamps to, but a hard ceiling so no protocol can turn an attacker-declared
+// length into an unbounded allocation from the header alone.
+const maxReadN = 1 << 20
 
 // ReadLine reads one line, bounded by maxLineBytes, refreshing the idle deadline
 // first so an active attacker is never reaped while a slow multi-minute operation
