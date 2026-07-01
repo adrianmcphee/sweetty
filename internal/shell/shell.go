@@ -44,7 +44,25 @@ type Shell struct {
 	// capture, when non-nil, receives command output instead of the terminal, so
 	// $(...) and backticks can run a sub-command and read back its stdout.
 	capture *strings.Builder
+	// expandBudget is the bytes still allowed for one top-level line's variable and
+	// command-substitution expansion; subCount counts substitutions in that line.
+	// Both bound the amplification a single line can drive (see maxExpandBytes).
+	expandBudget int
+	subCount     int
 }
+
+// maxExpandBytes caps the total bytes one command line may accumulate through
+// variable and command substitution, and maxCmdSubs caps how many substitutions
+// it may run. Every leaf buffer is already bounded (a file at 2 MiB, a command's
+// output at maxCmdOutput), but a single 64 KiB line can hold thousands of
+// $(cat big) or $VAR$VAR... repetitions whose results all live in memory at once.
+// Without an aggregate cap that multiplies into gigabytes and OOM-kills the whole
+// multi-port process, which recover() cannot catch. The cap is shared across the
+// line and all its nested substitutions, and reset per top-level line.
+const (
+	maxExpandBytes = 8 << 20
+	maxCmdSubs     = 256
+)
 
 // maxExecDepth bounds how deeply a command may re-enter the shell (via `sh -c`,
 // `bash -c`, or a base64-decoded command that runs). Without it a self-referential
@@ -109,6 +127,7 @@ func newShell(s *server.Session, base *vfs.FS, p *persona.Persona, user, style s
 	return &Shell{
 		s: s, fs: base.NewSession(home), p: p, user: user, style: style,
 		env: defaultEnv(p, user, home), pivot: pivot,
+		expandBudget: maxExpandBytes,
 	}
 }
 
@@ -173,6 +192,12 @@ func (sh *Shell) loop() {
 }
 
 func (sh *Shell) runLine(line string) {
+	if sh.execDepth == 0 {
+		// Fresh top-level line: refill the shared expansion budget. Nested lines run
+		// by $(...) do not reset it, so a line and all its substitutions share one cap.
+		sh.expandBudget = maxExpandBytes
+		sh.subCount = 0
+	}
 	if sh.execDepth >= maxExecDepth {
 		// Bottom out the way a crashed process does, matching the recover() fallback
 		// below — not with a synthetic "maximum nesting level" string, which no real
@@ -283,7 +308,7 @@ func (sh *Shell) emit(stg stage, out string) {
 	// Inside a $(...) or backtick substitution, output is collected into a buffer
 	// the substitution reads back, not written to the terminal (and not CRLF-translated).
 	if sh.capture != nil {
-		sh.capture.WriteString(out)
+		sh.capture.WriteString(sh.takeBudget(out))
 		return
 	}
 	if out == "" {
@@ -301,6 +326,20 @@ func (sh *Shell) expandStage(stg stage) []string {
 		out = append(out, sh.expand(a))
 	}
 	return out
+}
+
+// takeBudget clamps s to the line's remaining expansion budget and debits it, so
+// the total bytes one line accumulates through substitution cannot exceed
+// maxExpandBytes however the substitutions are nested or repeated.
+func (sh *Shell) takeBudget(s string) string {
+	if sh.expandBudget <= 0 {
+		return ""
+	}
+	if len(s) > sh.expandBudget {
+		s = s[:sh.expandBudget]
+	}
+	sh.expandBudget -= len(s)
+	return s
 }
 
 func (sh *Shell) expand(w string) string {
@@ -348,7 +387,7 @@ func (sh *Shell) expand(w string) string {
 		}
 		if i+1 < len(w) && w[i+1] == '{' {
 			if j := strings.IndexByte(w[i+2:], '}'); j >= 0 {
-				b.WriteString(sh.getenv(w[i+2 : i+2+j]))
+				b.WriteString(sh.takeBudget(sh.getenv(w[i+2 : i+2+j])))
 				i = i + 2 + j
 				continue
 			}
@@ -358,7 +397,7 @@ func (sh *Shell) expand(w string) string {
 			j++
 		}
 		if j > i+1 {
-			b.WriteString(sh.getenv(w[i+1 : j]))
+			b.WriteString(sh.takeBudget(sh.getenv(w[i+1 : j])))
 			i = j - 1
 			continue
 		}
@@ -379,6 +418,10 @@ func (sh *Shell) getenv(name string) string {
 // folded to spaces (an approximation of unquoted word-splitting that suits the
 // recon one-liners attackers run).
 func (sh *Shell) cmdSub(inner string) string {
+	sh.subCount++
+	if sh.subCount > maxCmdSubs || sh.expandBudget <= 0 {
+		return ""
+	}
 	out := sh.runCaptured(inner)
 	out = strings.Trim(out, "\n")
 	return strings.ReplaceAll(out, "\n", " ")
