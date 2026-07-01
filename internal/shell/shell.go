@@ -80,6 +80,27 @@ func RunOnce(s *server.Session, base *vfs.FS, p *persona.Persona, user, style st
 	return sh.last
 }
 
+// RunOnceCaptured runs one command line and returns its terminal output as a
+// string instead of writing it to the session connection, plus the exit code. The
+// side-effect capture (credentials, commands, download attempts, droppers, exec
+// attempts) still fires through the logger. It is how a protocol that is not a live
+// terminal, an HTTP RCE handler, can drive the same inert shell to record an
+// attacker's injected command and produce coherent output without the shell writing
+// raw bytes into the HTTP response. It executes nothing real, exactly like RunOnce.
+func RunOnceCaptured(s *server.Session, base *vfs.FS, p *persona.Persona, user, style string, pivot PivotResolver, line string) (string, int) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return "", 0
+	}
+	sh := newShell(s, base, p, user, style, pivot)
+	sh.s.CmdCount++
+	out := s.CaptureOutput(func() { sh.runLine(line) })
+	if sh.last < 0 {
+		return out, 0
+	}
+	return out, sh.last
+}
+
 func newShell(s *server.Session, base *vfs.FS, p *persona.Persona, user, style string, pivot PivotResolver) *Shell {
 	home := "/root"
 	if user != "root" {

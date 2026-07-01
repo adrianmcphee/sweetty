@@ -183,9 +183,13 @@ func (sh *Shell) runInteractive(args []string) int {
 
 // pause sleeps unless the test harness has enabled fast mode.
 func (sh *Shell) pause(d time.Duration) {
-	if !server.FastMode() {
-		time.Sleep(d)
+	// Skip the realism sleep in fast mode (tests) and when driving a non-terminal
+	// capture (an HTTP RCE): no one is watching a live terminal there, and the
+	// accumulated pauses would push the response past a scanner's timeout.
+	if server.FastMode() || (sh.s != nil && sh.s.Capturing()) {
+		return
 	}
+	time.Sleep(d)
 }
 
 func wgetURL(args []string) string {

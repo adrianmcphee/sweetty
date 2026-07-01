@@ -49,6 +49,12 @@ type Session struct {
 	// Deadline is the absolute time the connection must end by, regardless of
 	// activity. Zero means no hard cap (the in-memory test harness path).
 	Deadline time.Time
+
+	// capture, when set, diverts everything the session would write to the
+	// connection into a buffer instead. It lets a non-terminal caller (the HTTP RCE
+	// bridge) drive the shell for its side-effect capture without the shell's output
+	// reaching the wire. A session is served by one goroutine, so no lock is needed.
+	capture *strings.Builder
 }
 
 // readDeadline returns the deadline to arm before a read: the idle timeout from
@@ -149,16 +155,44 @@ func (s *Session) ReplaceReader(r io.Reader) { s.reader = bufio.NewReader(r) }
 // ---- IO helpers ----
 
 func (s *Session) Write(str string) {
+	if s.capture != nil {
+		s.capture.WriteString(str)
+		return
+	}
 	s.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
 	s.conn.Write([]byte(str))
 }
 
 func (s *Session) WriteBytes(b []byte) {
+	if s.capture != nil {
+		s.capture.Write(b)
+		return
+	}
 	s.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
 	s.conn.Write(b)
 }
 
 func (s *Session) Writeln(str string) { s.Write(str + "\r\n") }
+
+// Capturing reports whether the session is in non-terminal capture mode, so the
+// shell can skip the realism pauses it would apply for a live viewer: an HTTP RCE
+// caller is not watching a terminal, and the accumulated sleeps would otherwise
+// push the response past a scanner's timeout.
+func (s *Session) Capturing() bool { return s.capture != nil }
+
+// CaptureOutput diverts everything the session would write to the connection into
+// a buffer for the duration of fn, and returns it. It lets a non-terminal caller
+// drive the shell (the HTTP RCE bridge) for its side effects, the download and
+// command capture, without the shell's terminal output reaching the wire. It
+// executes nothing real; it only redirects output.
+func (s *Session) CaptureOutput(fn func()) string {
+	prev := s.capture
+	var buf strings.Builder
+	s.capture = &buf
+	defer func() { s.capture = prev }() // restore even if fn panics, so later writes reach the wire
+	fn()
+	return buf.String()
+}
 
 // maxLineBytes caps a single captured line. Without a bound, a connection that
 // streams bytes with no newline grows the read buffer until the process OOMs (and
@@ -171,6 +205,13 @@ const maxLineBytes = 64 * 1024
 // first so an active attacker is never reaped while a slow multi-minute operation
 // runs elsewhere.
 func (s *Session) ReadLine() (string, bool) {
+	// In capture (non-terminal) mode there is no interactive input stream: the HTTP
+	// RCE bridge drives the shell with a command it already holds. Return no-input at
+	// once so a command that would prompt (ssh, su, passwd, an editor) aborts cleanly
+	// instead of blocking the handler on a read that never completes.
+	if s.capture != nil {
+		return "", false
+	}
 	s.conn.SetReadDeadline(s.readDeadline())
 	var b strings.Builder
 	for {
@@ -232,7 +273,11 @@ func (s *Session) HoldOpen(d time.Duration) {
 // banners and output feel like a slow terminal. It stops on the first write
 // error (client gone).
 func (s *Session) SlowWrite(str string, delay time.Duration) {
-	if FastMode() {
+	// Fast mode (tests) and capture mode (a non-terminal HTTP RCE) emit the whole
+	// string at once through the capture-aware Write: the per-rune loop below sleeps
+	// and writes straight to the connection, which would hang or corrupt a captured
+	// response.
+	if FastMode() || s.capture != nil {
 		s.Write(str)
 		return
 	}
@@ -248,7 +293,11 @@ func (s *Session) SlowWrite(str string, delay time.Duration) {
 // SlowProgress draws a wget/curl-style progress bar that advances over total,
 // updating in place with carriage returns and ending with a newline.
 func (s *Session) SlowProgress(label string, total time.Duration) {
-	if FastMode() {
+	// In fast mode (tests) or capture mode (an HTTP RCE, non-terminal) emit only the
+	// finished bar through the capture-aware Write: the slow loop below both sleeps
+	// for minutes and writes straight to the connection, either of which would hang
+	// or corrupt a captured RCE response.
+	if FastMode() || s.capture != nil {
 		s.Write(fmt.Sprintf("\r%s %s 100%%\n", label, progressBar(100)))
 		return
 	}
