@@ -23,6 +23,14 @@ import (
 // its terminating IAC SE. Real subnegotiations are tiny; a longer one is malformed.
 const maxSubnegLen = 256
 
+// maxNegotiations bounds how many option-negotiation triplets a single Read may
+// consume before giving up. Each triplet makes the reader write a reply while
+// producing no data byte, so a peer that streams IAC DO x IAC DO x ... can hold
+// the loop spinning and force a 1:1 write reflection. A real client negotiates a
+// handful of options at startup; far past that is a flood, and ending the read
+// stops it well before the idle deadline would.
+const maxNegotiations = 512
+
 // loginAttempts is how many username/password tries the login prompt allows before
 // dropping the connection, matching login(1)'s default LOGIN_RETRIES of 3.
 const loginAttempts = 3
@@ -30,6 +38,10 @@ const loginAttempts = 3
 // errOversizedSubneg ends a read whose subnegotiation never terminates, so a peer
 // cannot pin the IAC reader on the raw socket with an unbounded IAC SB stream.
 var errOversizedSubneg = errors.New("telnet: oversized subnegotiation")
+
+// errNegotiationFlood ends a read that is nothing but option negotiation, so a
+// peer cannot pin the reader reflecting replies without ever sending input.
+var errNegotiationFlood = errors.New("telnet: option-negotiation flood")
 
 // Telnet option bytes.
 const (
@@ -270,6 +282,7 @@ func (r *iacReader) readByte() (byte, error) {
 
 func (r *iacReader) Read(p []byte) (int, error) {
 	n := 0
+	negs := 0
 	for n < len(p) {
 		b, err := r.readByte()
 		if err != nil {
@@ -299,6 +312,9 @@ func (r *iacReader) Read(p []byte) (int, error) {
 					return 0, err
 				}
 				r.negotiate(c, opt)
+				if negs++; negs > maxNegotiations {
+					return n, errNegotiationFlood
+				}
 			case c == sb:
 				// A real subnegotiation (NAWS, terminal type) is a handful of bytes.
 				// Cap the scan so a peer that sends IAC SB and then a stream with no
