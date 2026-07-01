@@ -109,6 +109,10 @@ nav{flex:1;overflow-y:auto;padding:4px 10px 10px}
 .fbtn{background:var(--panel2);border:1px solid var(--bd);color:var(--mut);font:inherit;font-size:12px;font-weight:500;padding:4px 12px;border-radius:999px;cursor:pointer}
 .fbtn:hover{color:var(--fg);border-color:var(--bd2)}
 .fbtn.active{background:var(--acc);border-color:var(--acc);color:#fff}
+.scopebar{display:flex;gap:6px;margin-bottom:14px;flex:none}
+.scbtn{background:var(--panel);border:1px solid var(--bd);color:var(--mut);font:inherit;font-size:12px;font-weight:500;padding:5px 14px;border-radius:999px;cursor:pointer}
+.scbtn:hover{color:var(--fg);border-color:var(--bd2)}
+.scbtn.active{background:var(--acc);border-color:var(--acc);color:#fff}
 .kindcell{flex:none;width:74px}
 .kindtag{display:inline-block;font-size:10px;font-weight:600;font-family:var(--mono);padding:2px 7px;border-radius:999px;border:1px solid currentColor;letter-spacing:.02em}
 .retbadge{flex:none;color:#fbbf24;font-family:var(--mono);font-size:11px;font-weight:600;width:48px;text-align:right}
@@ -232,8 +236,12 @@ nav{flex:1;overflow-y:auto;padding:4px 10px 10px}
 <div id="content">
 
 <section class="view active" id="view_feed">
+<div class="scopebar">
+<button class="scbtn active" data-scope="today">Today</button>
+<button class="scbtn" data-scope="all">All time</button>
+</div>
 <div class="cards">
-<div class="card statcard"><div class="top"><span class="ico t-blue" data-icon="sessions"></span><span class="lbl">Sessions today</span></div><div class="num" id="s_sessions">0</div></div>
+<div class="card statcard"><div class="top"><span class="ico t-blue" data-icon="sessions"></span><span class="lbl">Sessions</span></div><div class="num" id="s_sessions">0</div></div>
 <div class="card statcard"><div class="top"><span class="ico t-green" data-icon="ips"></span><span class="lbl">Unique sources</span></div><div class="num" id="s_ips">0</div></div>
 <div class="card statcard click" id="dl_card"><div class="top"><span class="ico t-red" data-icon="downloads"></span><span class="lbl">Payload pulls</span></div><div class="num" id="s_dl">0</div></div>
 <div class="card statcard click" id="bait_card"><div class="top"><span class="ico t-teal" data-icon="bait"></span><span class="lbl">90s JT Reveals</span></div><div class="num" id="s_ht">0</div></div>
@@ -452,6 +460,7 @@ var t=el('span','kindtag',k[0]);
 t.style.color=k[1];
 return t;
 }
+var statScope='today';
 var srcFilter='all',srcCountry='',srcSearch='';
 function matchSrcFilter(r){
 if(srcFilter==='returning'&&!r.returning)return false;
@@ -576,9 +585,11 @@ setNum('r_scans',t.port_scans||0);
 setNum('r_countries',(overview.by_country||[]).length);
 setNum('r_agents',t.user_agents||0);
 setNum('r_attempts',(t.credentials||0)+(t.http_requests||0)+(t.exec||0)+(t.downloads||0));
-var td=overview.today||{};
-setNum('s_sessions',td.sessions||0);setNum('s_ips',td.sources||0);setNum('s_dl',td.downloads||0);
-setNum('s_ht',td.bait||0);setNum('s_scans',td.port_scans||0);setNum('nav_ht',td.bait||0);setNum('nav_pl',td.downloads||0);
+// The five stat cards show today (the default) or all-time, per the scope toggle.
+// Both datasets are already in the overview rollup, so switching is client-side.
+var sc=statScope==='all'?(overview.totals||{}):(overview.today||{});
+setNum('s_sessions',sc.sessions||0);setNum('s_ips',sc.sources||0);setNum('s_dl',sc.downloads||0);
+setNum('s_ht',sc.bait||0);setNum('s_scans',sc.port_scans||0);setNum('nav_ht',sc.bait||0);setNum('nav_pl',sc.downloads||0);
 var bv=document.getElementById('build_ver');if(bv&&overview.version)bv.textContent=overview.version;
 populateCountryFilter(overview.sources||[]);
 if(curView==='sources')renderSources();
@@ -1074,6 +1085,12 @@ for(var sf=0;sf<srcfBtns.length;sf++)srcfBtns[sf].addEventListener('click',funct
 srcFilter=this.getAttribute('data-srcfilter');
 for(var z=0;z<srcfBtns.length;z++)srcfBtns[z].classList.toggle('active',srcfBtns[z]===this);
 renderSources();
+});
+var scopeBtns=document.querySelectorAll('[data-scope]');
+for(var sb=0;sb<scopeBtns.length;sb++)scopeBtns[sb].addEventListener('click',function(){
+statScope=this.getAttribute('data-scope');
+for(var z2=0;z2<scopeBtns.length;z2++)scopeBtns[z2].classList.toggle('active',scopeBtns[z2]===this);
+applyOverview();
 });
 var scSel=document.getElementById('src_country');
 if(scSel)scSel.addEventListener('change',function(){srcCountry=this.value;renderSources();});

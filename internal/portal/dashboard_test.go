@@ -254,6 +254,22 @@ func TestDashboardHasSourceFilters(t *testing.T) {
 	}
 }
 
+// TestDashboardHasStatScopeToggle checks the live-feed stat cards carry the
+// Today / All-time scope toggle and the code that switches them.
+func TestDashboardHasStatScopeToggle(t *testing.T) {
+	for _, want := range []string{
+		`data-scope="today"`,
+		`data-scope="all"`,
+		"var statScope=",
+		"statScope==='all'",
+		".scbtn{",
+	} {
+		if !strings.Contains(dashboardHTML, want) {
+			t.Errorf("dashboard page missing the stat-scope toggle hook %q", want)
+		}
+	}
+}
+
 // TestDashboardRendersAssessmentPanel checks the per-IP drawer wires the profile
 // into an assessment panel: the builders, the styles, and the threading of the
 // byIP response's profile into renderDetail.
