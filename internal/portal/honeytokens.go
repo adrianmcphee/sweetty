@@ -4,8 +4,6 @@ import (
 	"net/http"
 	"sort"
 
-	"github.com/gin-gonic/gin"
-
 	"sweetty/internal/event"
 )
 
@@ -28,12 +26,12 @@ type honeytokenSource struct {
 // headline totals, so an operator can see at a glance how often a bait (the fake
 // vault, or an image viewer pointed at a bait file) was triggered and from
 // where. This is the analytics view the bait exists to feed.
-func (p *Portal) honeytokens(c *gin.Context) {
+func (p *Portal) honeytokens(w http.ResponseWriter, _ *http.Request) {
 	entries, err := p.readEntries(func(e event.Entry) bool {
 		return e.Event == "HONEYTOKEN"
 	})
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"sources": []honeytokenSource{}, "total": 0, "by_token": gin.H{}})
+		writeJSON(w, http.StatusOK, map[string]any{"sources": []honeytokenSource{}, "total": 0, "by_token": map[string]any{}})
 		return
 	}
 
@@ -89,7 +87,7 @@ func (p *Portal) honeytokens(c *gin.Context) {
 		return sources[i].LastSeen > sources[j].LastSeen
 	})
 
-	c.JSON(http.StatusOK, gin.H{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"sources":     sources,
 		"total":       len(entries),
 		"unique_srcs": len(order),

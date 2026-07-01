@@ -4,8 +4,6 @@ import (
 	"net/http"
 	"sort"
 
-	"github.com/gin-gonic/gin"
-
 	"sweetty/internal/event"
 )
 
@@ -40,7 +38,7 @@ type droppedRef struct {
 // headline totals. The captured URLs are the honeypot's highest-value indicator of
 // compromise (the malware staging host and, often, the C2), so this is the page an
 // operator reads to see who is fetching what, and hands to a threat-intel platform.
-func (p *Portal) payloads(c *gin.Context) {
+func (p *Portal) payloads(w http.ResponseWriter, _ *http.Request) {
 	// Both an over-the-wire fetch (DOWNLOAD_ATTEMPT) and an in-place dropper
 	// (DROPPER) are payload deliveries; this page rolls up who delivered what by
 	// either route, since the loaders on a given sensor may favour one or the other.
@@ -48,7 +46,7 @@ func (p *Portal) payloads(c *gin.Context) {
 		return e.Event == "DOWNLOAD_ATTEMPT" || e.Event == "DROPPER"
 	})
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"sources": []payloadSource{}, "total": 0, "by_url": gin.H{}})
+		writeJSON(w, http.StatusOK, map[string]any{"sources": []payloadSource{}, "total": 0, "by_url": map[string]any{}})
 		return
 	}
 
@@ -120,7 +118,7 @@ func (p *Portal) payloads(c *gin.Context) {
 		return sources[i].LastSeen > sources[j].LastSeen
 	})
 
-	c.JSON(http.StatusOK, gin.H{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"sources":       sources,
 		"total":         len(entries),
 		"unique_srcs":   len(order),
