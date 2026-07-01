@@ -5,8 +5,6 @@ import (
 	"sort"
 	"strconv"
 	"time"
-
-	"github.com/gin-gonic/gin"
 )
 
 // overviewSourceCap bounds the per-source rollup in the overview response. A busy
@@ -76,10 +74,10 @@ type agentStat struct {
 // user-agent strings, and a per-source rollup enriched with country and scope.
 // Management-plane events (the portal's own system notices) are excluded so the
 // figures describe attacker activity only.
-func (p *Portal) overview(c *gin.Context) {
+func (p *Portal) overview(w http.ResponseWriter, _ *http.Request) {
 	entries, err := p.readEntries(nil)
 	if err != nil {
-		c.JSON(http.StatusOK, emptyOverview(p))
+		writeJSON(w, http.StatusOK, emptyOverview(p))
 		return
 	}
 
@@ -238,8 +236,8 @@ func (p *Portal) overview(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"totals": gin.H{
+	writeJSON(w, http.StatusOK, map[string]any{
+		"totals": map[string]any{
 			"events":        events,
 			"sources":       len(order),
 			"sessions":      sessions,
@@ -251,7 +249,7 @@ func (p *Portal) overview(c *gin.Context) {
 			"bait":          bait,
 			"user_agents":   len(uaStats),
 		},
-		"today": gin.H{
+		"today": map[string]any{
 			"sessions":   tSessions,
 			"sources":    len(tSrc),
 			"downloads":  tDownloads,
@@ -403,9 +401,9 @@ func topAgents(m map[string]*agentStat) []agentStat {
 
 // emptyOverview is the zero-valued response shape, returned when the log cannot be
 // read so the dashboard renders empty panels instead of erroring.
-func emptyOverview(p *Portal) gin.H {
-	return gin.H{
-		"totals": gin.H{
+func emptyOverview(p *Portal) map[string]any {
+	return map[string]any{
+		"totals": map[string]any{
 			"events": 0, "sources": 0, "sessions": 0, "port_scans": 0,
 			"credentials": 0, "http_requests": 0, "downloads": 0, "exec": 0, "bait": 0, "user_agents": 0,
 		},

@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
-
 	"sweetty/internal/event"
 	"sweetty/internal/util"
 )
@@ -62,10 +60,11 @@ func (p *Portal) readEntries(keep func(event.Entry) bool) ([]event.Entry, error)
 
 // logQuery serves the main feed: newest-first entries, optionally filtered by a
 // src-IP prefix and an exact event type, capped at limit.
-func (p *Portal) logQuery(c *gin.Context) {
-	limit := parseLimit(c.Query("limit"))
-	ipPrefix := c.Query("ip")
-	eventType := c.Query("event")
+func (p *Portal) logQuery(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	limit := parseLimit(q.Get("limit"))
+	ipPrefix := q.Get("ip")
+	eventType := q.Get("event")
 
 	entries, err := p.readEntries(func(e event.Entry) bool {
 		if ipPrefix != "" && !strings.HasPrefix(srcOf(e), ipPrefix) {
@@ -77,7 +76,7 @@ func (p *Portal) logQuery(c *gin.Context) {
 		return true
 	})
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"entries": []event.Entry{}, "count": 0})
+		writeJSON(w, http.StatusOK, map[string]any{"entries": []event.Entry{}, "count": 0})
 		return
 	}
 
@@ -87,13 +86,13 @@ func (p *Portal) logQuery(c *gin.Context) {
 	if len(reversed) > limit {
 		reversed = reversed[:limit]
 	}
-	c.JSON(http.StatusOK, gin.H{"entries": reversed, "count": len(reversed)})
+	writeJSON(w, http.StatusOK, map[string]any{"entries": reversed, "count": len(reversed)})
 }
 
 // byIP returns every entry attributable to one IP, by src_ip or by the host part
 // of the remote address, in chronological order so the JS can build a transcript.
-func (p *Portal) byIP(c *gin.Context) {
-	ip := c.Param("ip")
+func (p *Portal) byIP(w http.ResponseWriter, r *http.Request) {
+	ip := r.PathValue("ip")
 	entries, err := p.readEntries(func(e event.Entry) bool {
 		return srcOf(e) == ip || e.IP == ip || e.SrcIP == ip
 	})
@@ -102,19 +101,19 @@ func (p *Portal) byIP(c *gin.Context) {
 	}
 	// entries are chronological, so the assessment (visits, phases, bot/human
 	// verdict) reads the source's history in order.
-	c.JSON(http.StatusOK, gin.H{"ip": ip, "entries": entries, "count": len(entries), "profile": analyzeSource(entries)})
+	writeJSON(w, http.StatusOK, map[string]any{"ip": ip, "entries": entries, "count": len(entries), "profile": analyzeSource(entries)})
 }
 
 // bySession returns every entry for one connection id, in chronological order.
-func (p *Portal) bySession(c *gin.Context) {
-	id := c.Param("id")
+func (p *Portal) bySession(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
 	entries, err := p.readEntries(func(e event.Entry) bool {
 		return e.Session == id
 	})
 	if err != nil {
 		entries = nil
 	}
-	c.JSON(http.StatusOK, gin.H{"session": id, "entries": entries, "count": len(entries)})
+	writeJSON(w, http.StatusOK, map[string]any{"session": id, "entries": entries, "count": len(entries)})
 }
 
 // events streams new log lines over Server-Sent Events. It opens the log file,
@@ -124,7 +123,7 @@ func (p *Portal) bySession(c *gin.Context) {
 // resume from there so events written during the gap are backfilled rather than
 // lost. A fresh connection (or a stale offset past a rotated log) starts at the end
 // of the file and streams only new lines. It returns when the client disconnects.
-func (p *Portal) events(c *gin.Context) {
+func (p *Portal) events(w http.ResponseWriter, r *http.Request) {
 	// Bound concurrent subscribers: each SSE stream holds a goroutine and an open fd
 	// for its whole life (deliberately no WriteTimeout), so without a cap a client
 	// opening many streams could exhaust both. Shed the excess rather than serve it.
@@ -132,24 +131,31 @@ func (p *Portal) events(c *gin.Context) {
 	case p.sseGate <- struct{}{}:
 		defer func() { <-p.sseGate }()
 	default:
-		c.String(http.StatusServiceUnavailable, "too many event streams")
+		writeString(w, http.StatusServiceUnavailable, "too many event streams")
+		return
+	}
+
+	// The feed streams frame by frame, so the writer must flush mid-response.
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeString(w, http.StatusInternalServerError, "streaming unsupported")
 		return
 	}
 
 	f, err := os.Open(p.cfg.LogFile)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "log unavailable")
+		writeString(w, http.StatusInternalServerError, "log unavailable")
 		return
 	}
 	defer f.Close()
 	offset, err := f.Seek(0, io.SeekEnd)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "log unavailable")
+		writeString(w, http.StatusInternalServerError, "log unavailable")
 		return
 	}
 	// Resume from Last-Event-ID when it names a byte offset still within the file;
 	// otherwise the end-of-file start above stands.
-	if lid := c.GetHeader("Last-Event-ID"); lid != "" {
+	if lid := r.Header.Get("Last-Event-ID"); lid != "" {
 		if n, perr := strconv.ParseInt(lid, 10, 64); perr == nil && n >= 0 && n <= offset {
 			if _, serr := f.Seek(n, io.SeekStart); serr == nil {
 				offset = n
@@ -157,13 +163,13 @@ func (p *Portal) events(c *gin.Context) {
 		}
 	}
 
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
 	// Disable proxy buffering so events arrive as they are written.
-	c.Header("X-Accel-Buffering", "no")
-	c.Writer.WriteHeader(http.StatusOK)
-	c.Writer.Flush()
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
 
 	reader := bufio.NewReader(f)
 	ticker := time.NewTicker(500 * time.Millisecond)
@@ -175,7 +181,7 @@ func (p *Portal) events(c *gin.Context) {
 	idleTicks := 0
 	const idlePingEvery = 20 // ~10s of silence between keep-alive pings
 
-	done := c.Request.Context().Done()
+	done := r.Context().Done()
 	for {
 		select {
 		case <-done:
@@ -201,23 +207,23 @@ func (p *Portal) events(c *gin.Context) {
 					continue
 				}
 				frame := "id: " + strconv.FormatInt(offset, 10) + "\nevent: log\ndata: " + line + "\n\n"
-				if _, err := c.Writer.WriteString(frame); err != nil {
+				if _, err := io.WriteString(w, frame); err != nil {
 					return
 				}
 				wrote = true
 			}
 			if wrote {
 				idleTicks = 0
-				c.Writer.Flush()
+				flusher.Flush()
 				continue
 			}
 			idleTicks++
 			if idleTicks >= idlePingEvery {
 				idleTicks = 0
-				if _, err := c.Writer.WriteString(": ping\n\n"); err != nil {
+				if _, err := io.WriteString(w, ": ping\n\n"); err != nil {
 					return
 				}
-				c.Writer.Flush()
+				flusher.Flush()
 			}
 		}
 	}

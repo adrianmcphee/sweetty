@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"github.com/gin-gonic/gin"
 )
 
 // safeID reports whether id is a plain session identifier (the base58 ids the
@@ -27,7 +25,7 @@ func safeID(id string) bool {
 
 // recordings lists the session ids that have a cast recording on disk, so the
 // drawer shows a replay control only where one exists.
-func (p *Portal) recordings(c *gin.Context) {
+func (p *Portal) recordings(w http.ResponseWriter, _ *http.Request) {
 	ids := []string{}
 	if p.cfg.RecordDir != "" {
 		if ents, err := os.ReadDir(p.cfg.RecordDir); err == nil {
@@ -39,21 +37,21 @@ func (p *Portal) recordings(c *gin.Context) {
 		}
 	}
 	sort.Strings(ids)
-	c.JSON(http.StatusOK, gin.H{"recordings": ids})
+	writeJSON(w, http.StatusOK, map[string]any{"recordings": ids})
 }
 
 // cast serves one session's asciinema recording for the inline player. The id is
 // validated to a bare session identifier before it ever touches the filesystem.
-func (p *Portal) cast(c *gin.Context) {
-	id := c.Param("id")
+func (p *Portal) cast(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
 	if p.cfg.RecordDir == "" || !safeID(id) {
-		c.Status(http.StatusNotFound)
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	data, err := os.ReadFile(filepath.Join(p.cfg.RecordDir, id+".cast"))
 	if err != nil {
-		c.Status(http.StatusNotFound)
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	c.Data(http.StatusOK, "application/x-asciicast; charset=utf-8", data)
+	writeData(w, http.StatusOK, "application/x-asciicast; charset=utf-8", data)
 }

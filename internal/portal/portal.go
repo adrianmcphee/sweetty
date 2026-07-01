@@ -8,11 +8,11 @@ package portal
 
 import (
 	_ "embed"
+	"encoding/json"
+	"io"
 	"net"
 	"net/http"
 	"time"
-
-	"github.com/gin-gonic/gin"
 
 	"sweetty/internal/config"
 	"sweetty/internal/event"
@@ -73,7 +73,7 @@ func New(cfg config.Config, logger *event.Logger) *Portal {
 	}
 }
 
-// Start runs the gin server on the configured bind and port over plain HTTP. The
+// Start runs the HTTP server on the configured bind and port over plain HTTP. The
 // portal binds loopback and is reached over an SSH tunnel that already encrypts,
 // so it terminates no TLS of its own. It blocks until the server stops and
 // returns its error.
@@ -91,48 +91,80 @@ func (p *Portal) Start() error {
 	return srv.ListenAndServe()
 }
 
-// engine builds the gin router with all routes wired. It is split out from Start
-// so tests can exercise the handlers without binding a port.
-func (p *Portal) engine() *gin.Engine {
-	gin.SetMode(gin.ReleaseMode)
-	r := gin.New()
-	// Trust no proxies: the portal is reached directly by the operator over the
-	// SSH tunnel, so c.ClientIP() returns the real TCP peer rather than a
-	// client-supplied X-Forwarded-For.
-	_ = r.SetTrustedProxies(nil)
-	r.Use(gin.Recovery())
-
-	// No application auth: the portal binds loopback and is reached only through
-	// the authenticated SSH tunnel, so SSH is the front door. Serve the dashboard
-	// and every data route directly.
-	r.GET("/", p.dashboardPage)
-	p.dashRoutes(r.Group("/dashboard"))
-	return r
+// engine builds the request multiplexer with all routes wired. It is split out
+// from Start so tests can exercise the handlers without binding a port. The routes
+// carry no login gate: the portal binds loopback and is reached over the SSH
+// tunnel, so SSH is the front door and every dashboard route is served openly. The
+// mux is reached directly by the operator over that tunnel, so a handler reads the
+// real TCP peer rather than a client-supplied X-Forwarded-For.
+func (p *Portal) engine() http.Handler {
+	mux := http.NewServeMux()
+	// The {$} anchor keeps "/" an exact match rather than a catch-all subtree, so
+	// an unknown path still returns 404 as it did before.
+	mux.HandleFunc("GET /{$}", p.dashboardPage)
+	mux.HandleFunc("GET /dashboard", p.dashboardPage)
+	mux.HandleFunc("GET /dashboard/events", p.events)
+	mux.HandleFunc("GET /dashboard/log", p.logQuery)
+	mux.HandleFunc("GET /dashboard/honeytokens", p.honeytokens)
+	mux.HandleFunc("GET /dashboard/payloads", p.payloads)
+	mux.HandleFunc("GET /dashboard/overview", p.overview)
+	mux.HandleFunc("GET /dashboard/consoles", p.consoleList)
+	// The console reverse proxy answers every method under its mount, matching the
+	// upstream it forwards to.
+	mux.HandleFunc("/dashboard/console/", p.console)
+	mux.HandleFunc("GET /dashboard/ip/{ip}", p.byIP)
+	mux.HandleFunc("GET /dashboard/session/{id}", p.bySession)
+	mux.HandleFunc("GET /dashboard/recordings", p.recordings)
+	mux.HandleFunc("GET /dashboard/cast/{id}", p.cast)
+	mux.HandleFunc("GET /dashboard/jt-prize.jpg", p.jtPrize)
+	return recoverHandler(mux)
 }
 
-// dashRoutes wires the read side of the dashboard onto a group. The portal binds
-// loopback and is reached over the SSH tunnel, so the routes carry no login gate.
-func (p *Portal) dashRoutes(dash *gin.RouterGroup) {
-	dash.GET("", p.dashboardPage)
-	dash.GET("/events", p.events)
-	dash.GET("/log", p.logQuery)
-	dash.GET("/honeytokens", p.honeytokens)
-	dash.GET("/payloads", p.payloads)
-	dash.GET("/overview", p.overview)
-	dash.GET("/consoles", p.consoleList)
-	dash.Any("/console/*rest", p.console)
-	dash.GET("/ip/:ip", p.byIP)
-	dash.GET("/session/:id", p.bySession)
-	dash.GET("/recordings", p.recordings)
-	dash.GET("/cast/:id", p.cast)
-	dash.GET("/jt-prize.jpg", p.jtPrize)
+// recoverHandler turns a panic in any handler into a 500 rather than a dropped
+// connection, so a single bad request cannot take the portal down. The proxy's
+// http.ErrAbortHandler is deliberately re-raised for net/http's own connection
+// teardown to handle.
+func recoverHandler(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				if rec == http.ErrAbortHandler {
+					panic(rec)
+				}
+				w.WriteHeader(http.StatusInternalServerError)
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
+// writeJSON serialises v as the response body with the JSON content type and the
+// given status. It mirrors the shape the dashboard's fetch calls expect.
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+// writeString writes a plain-text body with the given status.
+func writeString(w http.ResponseWriter, status int, s string) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(status)
+	_, _ = io.WriteString(w, s)
+}
+
+// writeData writes a raw body with an explicit content type and status.
+func writeData(w http.ResponseWriter, status int, contentType string, b []byte) {
+	w.Header().Set("Content-Type", contentType)
+	w.WriteHeader(status)
+	_, _ = w.Write(b)
 }
 
 // jtPrize serves the embedded celebration portrait for the honeytoken flash. It is
 // static and cacheable, and reaches nothing off-host.
-func (p *Portal) jtPrize(c *gin.Context) {
-	c.Header("Cache-Control", "public, max-age=86400")
-	c.Data(http.StatusOK, "image/jpeg", jtPrizeJPG)
+func (p *Portal) jtPrize(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	writeData(w, http.StatusOK, "image/jpeg", jtPrizeJPG)
 }
 
 // addr renders the portal bind address. The default bind is loopback, so the
@@ -144,8 +176,8 @@ func addr(bind string, port int) string {
 
 // dashboardPage serves the single-page dashboard shell. All data is loaded by its
 // inline JavaScript from the /dashboard JSON and SSE endpoints.
-func (p *Portal) dashboardPage(c *gin.Context) {
-	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(dashboardHTML))
+func (p *Portal) dashboardPage(w http.ResponseWriter, _ *http.Request) {
+	writeData(w, http.StatusOK, "text/html; charset=utf-8", []byte(dashboardHTML))
 }
 
 // itoa renders a non-negative int without pulling in fmt for a hot path. Ports

@@ -8,8 +8,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/gin-gonic/gin"
-
 	"sweetty/internal/config"
 	"sweetty/internal/event"
 )
@@ -95,27 +93,27 @@ func newConsoleProxy(name string, target *url.URL, stripPrefix bool) *httputil.R
 // the first path segment after the mount; a bare console path is redirected to a
 // trailing slash so the upstream's relative links resolve under the mount instead
 // of escaping it.
-func (p *Portal) console(c *gin.Context) {
-	rest := strings.TrimPrefix(c.Param("rest"), "/")
+func (p *Portal) console(w http.ResponseWriter, r *http.Request) {
+	rest := strings.TrimPrefix(r.URL.Path, consoleMount)
 	name := rest
 	if i := strings.IndexByte(rest, '/'); i >= 0 {
 		name = rest[:i]
 	}
 	entry := p.consoles[name]
 	if entry == nil {
-		c.String(http.StatusNotFound, "no such console")
+		writeString(w, http.StatusNotFound, "no such console")
 		return
 	}
-	if c.Request.URL.Path == consoleMount+name {
-		c.Redirect(http.StatusFound, consoleMount+name+"/")
+	if r.URL.Path == consoleMount+name {
+		http.Redirect(w, r, consoleMount+name+"/", http.StatusFound)
 		return
 	}
-	entry.proxy.ServeHTTP(c.Writer, c.Request)
+	entry.proxy.ServeHTTP(w, r)
 }
 
 // consoleList returns the configured consoles for the dashboard to render as
 // links. It exposes only the name and label, never the upstream target.
-func (p *Portal) consoleList(c *gin.Context) {
+func (p *Portal) consoleList(w http.ResponseWriter, _ *http.Request) {
 	type item struct {
 		Name  string `json:"name"`
 		Label string `json:"label"`
@@ -125,7 +123,7 @@ func (p *Portal) consoleList(c *gin.Context) {
 		items = append(items, item{Name: e.name, Label: e.label})
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
-	c.JSON(http.StatusOK, gin.H{"consoles": items})
+	writeJSON(w, http.StatusOK, map[string]any{"consoles": items})
 }
 
 // isLocalTarget reports whether a console upstream is on the local host. It
